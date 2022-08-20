@@ -26,5 +26,5 @@ data "ldap_entry" "user" {
 
 ### Read-Only
 
-- `data_json` (String, Sensitive) JSON-encoded string that that is read as the attributes of the entry
+- `data_json` (String) JSON-encoded string that that is read as the attributes of the entry
 - `id` (String) The DN of the LDAP entry

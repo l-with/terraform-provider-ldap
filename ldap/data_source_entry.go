@@ -32,7 +32,6 @@ func dataSourceLDAPEntry() *schema.Resource {
 				Description: "JSON-encoded string that that is read as the attributes of the entry",
 				Type:        schema.TypeString,
 				Computed:    true,
-				Sensitive:   true,
 			},
 		},
 	}
