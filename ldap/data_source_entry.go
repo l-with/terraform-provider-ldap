@@ -14,7 +14,7 @@ func dataSourceLDAPEntry() *schema.Resource {
 		ReadContext: dataSourceLDAPEntryRead,
 		Schema: map[string]*schema.Schema{
 			"id": {
-				Description: "The DN of the LDAP entry",
+				Description: "DN of the LDAP entry",
 				Type:        schema.TypeString,
 				Computed:    true,
 			},
@@ -24,7 +24,7 @@ func dataSourceLDAPEntry() *schema.Resource {
 				Required:    true,
 			},
 			"filter": {
-				Description: "The filter for selecting the LDAP entry",
+				Description: "filter for selecting the LDAP entry",
 				Type:        schema.TypeString,
 				Required:    true,
 			},
