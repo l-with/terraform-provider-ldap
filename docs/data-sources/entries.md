@@ -6,11 +6,11 @@ description: |-
 
 # ldap_entries (Data Source)
 
-Provides details about a user in LDAP. 
+Provides details about entries in LDAP. 
 
 ## Example Usage
 ```terraform
-data "ldap_entry" "does" {
+data "ldap_entries" "does" {
   ou     = "ou=People,dc=example,dc=com"
   filter = "sn=Doe"
 }
