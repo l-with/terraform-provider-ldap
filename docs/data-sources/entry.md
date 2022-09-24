@@ -6,7 +6,7 @@ description: |-
 
 # ldap_entry (Data Source)
 
-Provides details about a user in LDAP. 
+Provides details about an entry in LDAP. 
 
 ## Example Usage
 ```terraform
