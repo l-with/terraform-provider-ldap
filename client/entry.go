@@ -3,9 +3,15 @@ package client
 import (
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
+	"log"
 )
 
-func (c *Client) ReadEntryByFilter(ou string, filter string) (entries map[string][]string, err error) {
+type LdapEntry struct {
+	Entry map[string][]string
+	Dn    string
+}
+
+func (c *Client) ReadEntryByFilter(ou string, filter string) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -18,25 +24,62 @@ func (c *Client) ReadEntryByFilter(ou string, filter string) (entries map[string
 		[]ldap.Control{},
 	)
 
-	sr, err := c.Conn.Search(req)
+	searchResult, err := c.Conn.Search(req)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(sr.Entries) == 0 {
+	if len(searchResult.Entries) == 0 {
 		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The filter '%s' doesn't match any entry in the OU: %s", filter, ou))
 	}
 
-	if len(sr.Entries) > 1 {
+	if len(searchResult.Entries) > 1 {
 		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The filter '%s' match more than one entry in the OU: %s", filter, ou))
 	}
 
-	entries = map[string][]string{}
-	for _, entry := range sr.Entries {
-		for _, attr := range entry.Attributes {
-			entries[attr.Name] = attr.Values
-		}
+	var le LdapEntry
+	le.Entry = make(map[string][]string)
+
+	for _, attr := range searchResult.Entries[0].Attributes {
+		le.Entry[attr.Name] = attr.Values
 	}
 
-	return entries, nil
+	le.Dn = searchResult.Entries[0].DN
+
+	return &le, nil
+}
+
+func (c *Client) ReadEntriesByFilter(ou string, filter string) (ldapEntries *[]LdapEntry, err error) {
+	req := ldap.NewSearchRequest(
+		ou,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases,
+		0,
+		0,
+		false,
+		filter,
+		[]string{"*"},
+		[]ldap.Control{},
+	)
+
+	searchResult, err := c.Conn.Search(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var les []LdapEntry
+
+	log.Printf("Found %d entries", len(searchResult.Entries))
+
+	for _, entry := range searchResult.Entries {
+		var ldapEntry LdapEntry
+		ldapEntry.Entry = make(map[string][]string)
+		for _, attr := range entry.Attributes {
+			ldapEntry.Entry[attr.Name] = attr.Values
+		}
+		ldapEntry.Dn = entry.DN
+		les = append(les, ldapEntry)
+	}
+
+	return &les, nil
 }

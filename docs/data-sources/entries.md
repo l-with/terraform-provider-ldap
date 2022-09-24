@@ -1,18 +1,18 @@
 ---
-page_title: "ldap_entry Data Source - terraform-provider-ldap"
+page_title: "ldap_entries Data Source - terraform-provider-ldap"
 subcategory: ""
 description: |-
 ---
 
-# ldap_entry (Data Source)
+# ldap_entries (Data Source)
 
 Provides details about a user in LDAP. 
 
 ## Example Usage
 ```terraform
-data "ldap_entry" "user" {
+data "ldap_entry" "does" {
   ou     = "ou=People,dc=example,dc=com"
-  filter = "mail=user@example.com"
+  filter = "sn=Doe"
 }
 ```
 
@@ -26,6 +26,13 @@ data "ldap_entry" "user" {
 
 ### Read-Only
 
-- `data_json` (String) JSON-encoded string that is read as the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)
-- `dn` (String) DN of the LDAP entry
+- `entries` (List of Object) list of entries (see [below for nested schema](#nestedatt--entries))
 - `id` (String) The ID of this resource.
+
+<a id="nestedatt--entries"></a>
+### Nested Schema for `entries`
+
+Read-Only:
+
+- `data_json` (String)
+- `dn` (String)

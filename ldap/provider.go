@@ -48,7 +48,8 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"ldap_entry": dataSourceLDAPEntry(),
+			"ldap_entry":   dataSourceLDAPEntry(),
+			"ldap_entries": dataSourceLDAPEntries(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
