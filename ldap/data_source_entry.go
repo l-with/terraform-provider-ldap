@@ -13,7 +13,7 @@ func dataSourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceLDAPEntryRead,
 		Schema: map[string]*schema.Schema{
-			"id": {
+			"dn": {
 				Description: "DN of the LDAP entry",
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -29,7 +29,7 @@ func dataSourceLDAPEntry() *schema.Resource {
 				Required:    true,
 			},
 			"data_json": {
-				Description: "JSON-encoded string that is read as the attributes of the entry",
+				Description: "JSON-encoded string that is read as the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
 				Type:        schema.TypeString,
 				Computed:    true,
 			},
@@ -47,7 +47,7 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
 
-	entry, err := cl.ReadEntryByFilter(ou, "("+filter+")")
+	ldapEntry, err := cl.ReadEntryByFilter(ou, "("+filter+")")
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
@@ -66,10 +66,15 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 		return diag.FromErr(err)
 	}
 
-	id := "(" + filter + "," + ou + ")"
+	id := ldapEntry.Dn
 	d.SetId(id)
 
-	jsonData, err := json.Marshal(entry)
+	err = d.Set("dn", id)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	jsonData, err := json.Marshal(ldapEntry.Entry)
 	if err != nil {
 		return diag.Errorf("error marshaling JSON for %q: %s", id, err)
 	}
