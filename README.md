@@ -9,4 +9,4 @@ terraform provider for LDAP
 
 ## Disclaimer
 
-This - by now - can only be used to retrieve details about an LDAP entry.
+This - by now - can only be used to retrieve details about a single LDAP entry or about all LDAP entries matching a filter.
