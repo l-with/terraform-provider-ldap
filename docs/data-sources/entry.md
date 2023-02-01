@@ -24,6 +24,10 @@ data "ldap_entry" "user" {
 - `filter` (String) filter for selecting the LDAP entry
 - `ou` (String) OU where LDAP entry will be searched
 
+### Optional
+
+- `ignore_attributes` (List of String) list of attributes to ignore
+
 ### Read-Only
 
 - `data_json` (String) JSON-encoded string that is read as the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)
