@@ -42,21 +42,26 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 			},
+			"ignore_attributes": {
+				Description: "list of attributes to ignore",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
 
 func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	return resourceLDAPEntriesRead(context.WithValue(ctx, CallerTypeKey, DatasourceCaller), d, m)
-}
-
-func resourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
-
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")")
+	var ignore_attributes []string
+	for _, ignore_attribute := range d.Get("ignore_attributes").([]interface{}) {
+		ignore_attributes = append(ignore_attributes, ignore_attribute.(string))
+	}
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes)
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {

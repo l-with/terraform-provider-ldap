@@ -24,6 +24,10 @@ data "ldap_entries" "does" {
 - `filter` (String) filter for selecting the LDAP entry
 - `ou` (String) OU where LDAP entry will be searched
 
+### Optional
+
+- `ignore_attributes` (List of String) list of attributes to ignore
+
 ### Read-Only
 
 - `entries` (List of Object) list of entries (see [below for nested schema](#nestedatt--entries))

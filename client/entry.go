@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
+	"golang.org/x/exp/slices"
 	"log"
 )
 
@@ -11,7 +12,7 @@ type LdapEntry struct {
 	Dn    string
 }
 
-func (c *Client) ReadEntryByFilter(ou string, filter string) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes []string) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -41,6 +42,9 @@ func (c *Client) ReadEntryByFilter(ou string, filter string) (ldapEntry *LdapEnt
 	le.Entry = make(map[string][]string)
 
 	for _, attr := range searchResult.Entries[0].Attributes {
+		if slices.Contains(ignore_attributes, attr.Name) {
+			continue
+		}
 		le.Entry[attr.Name] = attr.Values
 	}
 
@@ -49,7 +53,7 @@ func (c *Client) ReadEntryByFilter(ou string, filter string) (ldapEntry *LdapEnt
 	return &le, nil
 }
 
-func (c *Client) ReadEntriesByFilter(ou string, filter string) (ldapEntries *[]LdapEntry, err error) {
+func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes []string) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -75,6 +79,9 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string) (ldapEntries *[]L
 		var ldapEntry LdapEntry
 		ldapEntry.Entry = make(map[string][]string)
 		for _, attr := range entry.Attributes {
+			if slices.Contains(ignore_attributes, attr.Name) {
+				continue
+			}
 			ldapEntry.Entry[attr.Name] = attr.Values
 		}
 		ldapEntry.Dn = entry.DN
