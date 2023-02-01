@@ -26,6 +26,7 @@ data "ldap_entry" "user" {
 
 ### Optional
 
+- `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
 
 ### Read-Only

@@ -48,6 +48,12 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			"ignore_attribute_patterns": {
+				Description: "list of attribute patterns to ignore",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
@@ -61,7 +67,11 @@ func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m in
 	for _, ignore_attribute := range d.Get("ignore_attributes").([]interface{}) {
 		ignore_attributes = append(ignore_attributes, ignore_attribute.(string))
 	}
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes)
+	var ignore_attribute_patterns []string
+	for _, ignore_attribute_pattern := range d.Get("ignore_attribute_patterns").([]interface{}) {
+		ignore_attribute_patterns = append(ignore_attribute_patterns, ignore_attribute_pattern.(string))
+	}
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns)
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
