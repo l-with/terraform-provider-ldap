@@ -54,6 +54,18 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			"base64encode_attributes": {
+				Description: "list of attributes to bas64 encode base",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			"base64encode_attribute_patterns": {
+				Description: "list of attribute patterns to bas64 encode base",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
@@ -71,7 +83,15 @@ func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m in
 	for _, ignore_attribute_pattern := range d.Get("ignore_attribute_patterns").([]interface{}) {
 		ignore_attribute_patterns = append(ignore_attribute_patterns, ignore_attribute_pattern.(string))
 	}
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns)
+	var base64encode_attributes []string
+	for _, base64encode_attribute := range d.Get("base64encode_attributes").([]interface{}) {
+		base64encode_attributes = append(base64encode_attributes, base64encode_attribute.(string))
+	}
+	var base64encode_attribute_patterns []string
+	for _, base64encode_attribute_pattern := range d.Get("base64encode_attribute_patterns").([]interface{}) {
+		base64encode_attribute_patterns = append(base64encode_attribute_patterns, base64encode_attribute_pattern.(string))
+	}
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns, base64encode_attributes, base64encode_attribute_patterns)
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
