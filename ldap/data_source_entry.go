@@ -46,13 +46,13 @@ func dataSourceLDAPEntry() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"base64encode_attributes": {
-				Description: "list of attributes to bas64 encode base",
+				Description: "list of attributes to be encoded to base64",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"base64encode_attribute_patterns": {
-				Description: "list of attribute patterns to bas64 encode base",
+				Description: "list of attribute patterns to be encoded to base64",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},

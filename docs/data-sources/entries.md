@@ -26,8 +26,8 @@ data "ldap_entries" "does" {
 
 ### Optional
 
-- `base64encode_attribute_patterns` (List of String) list of attribute patterns to bas64 encode base
-- `base64encode_attributes` (List of String) list of attributes to bas64 encode base
+- `base64encode_attribute_patterns` (List of String) list of attribute patterns to be encoded to base64
+- `base64encode_attributes` (List of String) list of attributes to be encoded to base64
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
 
