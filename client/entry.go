@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
 	"golang.org/x/exp/slices"
@@ -13,7 +14,7 @@ type LdapEntry struct {
 	Dn    string
 }
 
-func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string, base64encode_attributes []string, base64encode_attributes_patterns []string) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -56,7 +57,25 @@ func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes [
 		if ignore {
 			continue
 		}
-		le.Entry[attr.Name] = attr.Values
+		values := attr.Values
+		if slices.Contains(base64encode_attributes, attr.Name) {
+			for i, value := range values {
+				values[i] = base64.StdEncoding.EncodeToString([]byte(value))
+			}
+		}
+		base64encode := false
+		for _, pattern := range base64encode_attributes_patterns {
+			r := regexp.MustCompile(pattern)
+			if r.MatchString(attr.Name) {
+				base64encode = true
+			}
+		}
+		if base64encode {
+			for i, value := range values {
+				values[i] = base64.StdEncoding.EncodeToString([]byte(value))
+			}
+		}
+		le.Entry[attr.Name] = values
 	}
 
 	le.Dn = searchResult.Entries[0].DN
@@ -64,7 +83,7 @@ func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes [
 	return &le, nil
 }
 
-func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string) (ldapEntries *[]LdapEntry, err error) {
+func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string, base64encode_attributes []string, base64encode_attributes_patterns []string) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -103,7 +122,25 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes
 			if ignore {
 				continue
 			}
-			ldapEntry.Entry[attr.Name] = attr.Values
+			values := attr.Values
+			if slices.Contains(base64encode_attributes, attr.Name) {
+				for i, value := range values {
+					values[i] = base64.StdEncoding.EncodeToString([]byte(value))
+				}
+			}
+			base64encode := false
+			for _, pattern := range base64encode_attributes_patterns {
+				r := regexp.MustCompile(pattern)
+				if r.MatchString(attr.Name) {
+					base64encode = true
+				}
+			}
+			if base64encode {
+				for i, value := range values {
+					values[i] = base64.StdEncoding.EncodeToString([]byte(value))
+				}
+			}
+			ldapEntry.Entry[attr.Name] = values
 		}
 		ldapEntry.Dn = entry.DN
 		les = append(les, ldapEntry)
