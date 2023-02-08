@@ -6,7 +6,12 @@ description: |-
 
 # ldap_entries (Data Source)
 
-Provides details about entries in LDAP. 
+Provides details about entries in LDAP.
+
+Attributes of the entries can be ignored by `ignore_attributes` or `ignore_attribute_patterns`.
+
+Attributes of the entries can be encoded to base64 by `base64encode_attributes` or `base64encode_attribute_patterns`. 
+This should be used for attributes with binary content.
 
 ## Example Usage
 ```terraform
