@@ -5,7 +5,13 @@ description: |-
 
 # {{ .ProviderShortName | upper }} Provider
 
-The provider makes it possible to read all details about an LDAP entry.
+The provider makes it possible to read all details about a single LDAP entry or about a set of LDAP entries.
+
+This is done in a strict generic way: there detail are accessible through an attribute `data_json`. 
+
+Attributes can be ignored by `ignore_attributes` or `ignore_attribute_patterns`.
+
+Attributes can be encoded base64 by `base64encode_attributes` or `base64encode_attribute_patterns`.
 
 ## Example Usage
 
