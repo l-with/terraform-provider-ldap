@@ -3,14 +3,14 @@ module github.com/l-with/terraform-provider-ldap
 go 1.18
 
 require (
-	github.com/go-ldap/ldap/v3 v3.4.4
+	github.com/go-ldap/ldap/v3 v3.4.5
 	github.com/hashicorp/terraform-plugin-docs v0.15.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.26.1
 	golang.org/x/exp v0.0.0-20230131160201-f062dba9d201
 )
 
 require (
-	github.com/Azure/go-ntlmssp v0.0.0-20220621081337-cb9428e4ac1e // indirect
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.2 // indirect
