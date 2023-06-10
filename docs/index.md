@@ -7,7 +7,7 @@ description: |-
 
 The provider makes it possible to read all details about a single LDAP entry or about a set of LDAP entries.
 
-This is done in a strict generic way: there detail are accessible through an attribute `data_json`. 
+This is done in a strict generic way: the details are accessible through the attribute `data_json`. 
 
 Attributes can be ignored by `ignore_attributes` or `ignore_attribute_patterns`.
 
