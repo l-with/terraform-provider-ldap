@@ -148,3 +148,37 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes
 
 	return &les, nil
 }
+
+func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
+	req := ldap.NewSearchRequest(
+		dn,
+		ldap.ScopeBaseObject,
+		ldap.NeverDerefAliases,
+		0,
+		0,
+		false,
+		``,
+		[]string{"*"},
+		[]ldap.Control{},
+	)
+
+	searchResult, err := c.Conn.Search(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(searchResult.Entries) == 0 {
+		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The dn '%s' doesn't match any entry", dn))
+	}
+
+	if len(searchResult.Entries) > 1 {
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The dn '%s' matches more than one entry", dn))
+	}
+
+	var le LdapEntry
+	le.Entry = make(map[string][]string)
+
+	le.Dn = searchResult.Entries[0].DN
+
+	return &le, nil
+}
