@@ -229,7 +229,7 @@ func (c *Client) DeleteAttribute(ldapEntry *LdapEntry, attrNameToDelete string) 
 	}
 
 	modifyRequest := ldap.NewModifyRequest(ldapEntry.Dn, []ldap.Control{})
-	for attrName, _ := range ldapEntry.Entry {
+	for attrName := range ldapEntry.Entry {
 		if attrNameToDelete == attrName {
 			modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
 				Operation:    ldap.DeleteAttribute,
