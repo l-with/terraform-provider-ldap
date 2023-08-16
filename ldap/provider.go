@@ -7,40 +7,51 @@ import (
 	client2 "github.com/l-with/terraform-provider-ldap/client"
 )
 
+const attributeNameHost = "host"
+const ldapHostEnvVarName = "LDAP_HOST"
+const attributeNamePort = "port"
+const ldapPortEnvVarName = "LDAP_PORT"
+const attributeNameBindUser = "bind_user"
+const ldapBindUserEnvVarName = "LDAP_BIND_USER"
+const attributeNameBindPassword = "bind_password"
+const ldapBindPasswordEnvVarName = "LDAP_BIND_PASSWORD"
+const attributeNameTls = "tls"
+const attributeNameTlsInsecure = "tls_insecure"
+
 func Provider() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"host": {
+			attributeNameHost: {
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("LDAP_HOST", nil),
-				Description: "LDAP host",
+				DefaultFunc: schema.EnvDefaultFunc(ldapHostEnvVarName, nil),
+				Description: "LDAP host, can optionally be passed as `" + ldapHostEnvVarName + "`environment variable",
 			},
-			"port": {
+			attributeNamePort: {
 				Type:        schema.TypeInt,
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("LDAP_PORT", nil),
-				Description: "LDAP port",
+				DefaultFunc: schema.EnvDefaultFunc(ldapPortEnvVarName, nil),
+				Description: "LDAP port, can optionally be passed as `" + ldapPortEnvVarName + "`environment variable",
 			},
-			"bind_user": {
+			attributeNameBindUser: {
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("LDAP_USER", nil),
-				Description: "LDAP username",
+				DefaultFunc: schema.EnvDefaultFunc(ldapBindUserEnvVarName, nil),
+				Description: "LDAP username, can optionally be passed as `" + ldapBindUserEnvVarName + "`environment variable",
 			},
-			"bind_password": {
+			attributeNameBindPassword: {
 				Type:        schema.TypeString,
-				DefaultFunc: schema.EnvDefaultFunc("LDAP_PASSWORD", nil),
+				DefaultFunc: schema.EnvDefaultFunc(ldapBindPasswordEnvVarName, nil),
 				Required:    true,
-				Description: "LDAP password",
+				Description: "LDAP password, can optionally be passed as `" + ldapBindPasswordEnvVarName + "`environment variable",
 			},
-			"tls": {
+			attributeNameTls: {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
 				Description: "Enable the TLS encryption for LDAP (LDAPS). Default, is `false`.",
 			},
-			"tls_insecure": {
+			attributeNameTlsInsecure: {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
@@ -60,12 +71,12 @@ func Provider() *schema.Provider {
 
 func providerConfigure(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	client := &client2.Client{
-		Host:         d.Get("host").(string),
-		Port:         d.Get("port").(int),
-		BindUser:     d.Get("bind_user").(string),
-		BindPassword: d.Get("bind_password").(string),
-		TLS:          d.Get("tls").(bool),
-		TLSInsecure:  d.Get("tls_insecure").(bool),
+		Host:         d.Get(attributeNameHost).(string),
+		Port:         d.Get(attributeNamePort).(int),
+		BindUser:     d.Get(attributeNameBindUser).(string),
+		BindPassword: d.Get(attributeNameBindPassword).(string),
+		TLS:          d.Get(attributeNameTls).(bool),
+		TLSInsecure:  d.Get(attributeNameTlsInsecure).(bool),
 	}
 
 	err := client.Connect()
