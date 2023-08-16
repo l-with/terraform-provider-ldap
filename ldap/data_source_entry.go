@@ -60,7 +60,7 @@ func dataSourceLDAPEntry() *schema.Resource {
 	}
 }
 
-func dataSourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	ou := d.Get("ou").(string)
