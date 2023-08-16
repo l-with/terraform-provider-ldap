@@ -5,13 +5,21 @@ description: |-
 
 # LDAP Provider
 
+## Data Sources
+
 The provider makes it possible to read all details about a single LDAP entry or about a set of LDAP entries.
 
-This is done in a strict generic way: the details are accessible through the attribute `data_json`. 
+This is done in a strict generic way: the details are accessible through the attribute `data_json`.
 
 Attributes can be ignored by `ignore_attributes` or `ignore_attribute_patterns`.
 
 Attributes can be encoded base64 by `base64encode_attributes` or `base64encode_attribute_patterns`.
+
+## Resources
+
+The provider makes it possible to provide an LDAP entry. This can be used to create, modify, and delete LDAP entries.
+
+This is done in a strict generic way: the details are specified through the attribute `data_json`.
 
 ## Example Usage
 
@@ -20,7 +28,7 @@ terraform {
   required_providers {
     ldap = {
       source  = "l-with/ldap"
-      version = ">= 0.0.2"
+      version = ">= 0.3"
     }
   }
 }
@@ -44,6 +52,24 @@ data "ldap_entry" "user" {
 
 locals {
   user_data = jsondecode(data.ldap_entry.user.data_json)
+}
+
+resource "ldap_entry" "users_example_com" {
+  dn = "ou=users,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "user_jim_mit" {
+  dn = "uid=jimmit01,${ldap_entry.users_example_com.dn}"
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["users"]
+    givenName   = ["Jim"]
+    sn          = ["Mit"]
+    cn          = ["Jim Mit"]
+  })
 }
 ```
 

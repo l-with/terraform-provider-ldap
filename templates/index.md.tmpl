@@ -5,13 +5,21 @@ description: |-
 
 # {{ .ProviderShortName | upper }} Provider
 
+## Data Sources
+
 The provider makes it possible to read all details about a single LDAP entry or about a set of LDAP entries.
 
-This is done in a strict generic way: the details are accessible through the attribute `data_json`. 
+This is done in a strict generic way: the details are accessible through the attribute `data_json`.
 
 Attributes can be ignored by `ignore_attributes` or `ignore_attribute_patterns`.
 
 Attributes can be encoded base64 by `base64encode_attributes` or `base64encode_attribute_patterns`.
+
+## Resources
+
+The provider makes it possible to provide an LDAP entry. This can be used to create, modify, and delete LDAP entries.
+
+This is done in a strict generic way: the details are specified through the attribute `data_json`.
 
 ## Example Usage
 
