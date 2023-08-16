@@ -47,6 +47,9 @@ func Provider() *schema.Provider {
 				Description: "Don't verify the server TLS certificate. Default is `false`.",
 			},
 		},
+		ResourcesMap: map[string]*schema.Resource{
+			"ldap_entry": resourceLDAPEntry(),
+		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"ldap_entry":   dataSourceLDAPEntry(),
 			"ldap_entries": dataSourceLDAPEntries(),
@@ -55,7 +58,7 @@ func Provider() *schema.Provider {
 	}
 }
 
-func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+func providerConfigure(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	client := &client2.Client{
 		Host:         d.Get("host").(string),
 		Port:         d.Get("port").(int),

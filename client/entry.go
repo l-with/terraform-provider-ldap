@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"golang.org/x/exp/slices"
 	"log"
 	"regexp"
+	"strings"
 )
 
 type LdapEntry struct {
@@ -152,12 +154,12 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes
 func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		dn,
-		ldap.ScopeWholeSubtree,
+		ldap.ScopeBaseObject,
 		ldap.NeverDerefAliases,
 		0,
 		0,
 		false,
-		``,
+		"(objectClass=*)",
 		[]string{"*"},
 		[]ldap.Control{},
 	)
@@ -179,6 +181,12 @@ func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 	le.Entry = make(map[string][]string)
 
 	for _, attr := range searchResult.Entries[0].Attributes {
+		if len(attr.Values) == 1 {
+			a := fmt.Sprintf("%s=%s", attr.Name, attr.Values[0])
+			if strings.HasPrefix(dn, a) {
+				continue
+			}
+		}
 		le.Entry[attr.Name] = attr.Values
 	}
 
@@ -189,6 +197,11 @@ func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 
 func (c *Client) CreateEntry(ldapEntry *LdapEntry) error {
 	addRequest := ldap.NewAddRequest(ldapEntry.Dn, []ldap.Control{})
+
+	for attrName, attrValues := range ldapEntry.Entry {
+		addRequest.Attribute(attrName, attrValues)
+	}
+
 	err := c.Conn.Add(addRequest)
 	if err != nil {
 		return err
@@ -197,66 +210,54 @@ func (c *Client) CreateEntry(ldapEntry *LdapEntry) error {
 	return nil
 }
 
-func (c *Client) DeleteEntry(ldapEntry *LdapEntry) error {
+func (c *Client) UpdateEntry(
+	ldapEntry *LdapEntry,
+	deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet *schema.Set,
+) error {
+	modifyRequest := ldap.NewModifyRequest(ldapEntry.Dn, []ldap.Control{})
 
-	deleteRequest := ldap.NewDelRequest(ldapEntry.Dn, []ldap.Control{})
+	for _, attributeName := range deletedAttributeNameSet.List() {
+		modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
+			Operation: ldap.DeleteAttribute,
+			Modification: ldap.PartialAttribute{
+				Type: attributeName.(string),
+				Vals: []string{},
+			},
+		})
+	}
+	for _, attributeName := range addedAttributeNameSet.List() {
+		modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
+			Operation: ldap.AddAttribute,
+			Modification: ldap.PartialAttribute{
+				Type: attributeName.(string),
+				Vals: ldapEntry.Entry[attributeName.(string)],
+			},
+		})
+	}
+	for _, attributeName := range changedAttributeNameSet.List() {
+		modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
+			Operation: ldap.ReplaceAttribute,
+			Modification: ldap.PartialAttribute{
+				Type: attributeName.(string),
+				Vals: ldapEntry.Entry[attributeName.(string)],
+			},
+		})
+	}
+
+	err := c.Conn.Modify(modifyRequest)
+	if err != nil {
+		log.Printf("[ERROR] UpdateEntry - error modifying LDAP object '%q' with values %v", ldapEntry.Dn, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) DeleteEntry(dn string) error {
+	deleteRequest := ldap.NewDelRequest(dn, []ldap.Control{})
 	err := c.Conn.Del(deleteRequest)
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (c *Client) ReadAttribute(ldapEntry *LdapEntry, attrName string) (*[]string, error) {
-	ldapEntry, err := c.ReadEntryByDN(ldapEntry.Dn)
-	if err != nil {
-		return nil, err
-	}
-
-	for name, values := range ldapEntry.Entry {
-		if attrName == name {
-			return &values, nil
-		}
-	}
-
-	return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The dn '%s' does not contain an attribute '%s'", ldapEntry.Dn))
-}
-
-func (c *Client) DeleteAttribute(ldapEntry *LdapEntry, attrNameToDelete string) error {
-	ldapEntry, err := c.ReadEntryByDN(ldapEntry.Dn)
-	if err != nil {
-		return err
-	}
-
-	modifyRequest := ldap.NewModifyRequest(ldapEntry.Dn, []ldap.Control{})
-	for attrName := range ldapEntry.Entry {
-		if attrNameToDelete == attrName {
-			modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
-				Operation:    ldap.DeleteAttribute,
-				Modification: ldap.PartialAttribute{Type: attrNameToDelete, Vals: []string{}},
-			})
-			return c.Conn.Modify(modifyRequest)
-		}
-	}
-
-	return ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The dn '%s' does not contain an attribute '%s'", ldapEntry.Dn))
-}
-
-func (c *Client) CreateAttribute(ldapEntry *LdapEntry, attribute ldap.Attribute) error {
-	modifyRequest := ldap.NewModifyRequest(ldapEntry.Dn, []ldap.Control{})
-
-	ldap.NewEntryAttribute(attribute.Type, attribute.Vals)
-
-	modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
-		Operation:    ldap.AddAttribute,
-		Modification: ldap.PartialAttribute{Type: attribute.Type, Vals: attribute.Vals},
-	})
-
-	err := c.Conn.Modify(modifyRequest)
-
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
