@@ -30,12 +30,20 @@ func resourceLDAPEntry() *schema.Resource {
 				Description: "JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
 				Type:        schema.TypeString,
 				Required:    true,
+				ValidateFunc: func(value interface{}, k string) (ws []string, errs []error) {
+					decoded := make(map[string][]string)
+					err := json.Unmarshal([]byte(value.(string)), &decoded)
+					if err != nil {
+						errs = append(errs, err)
+					}
+					return nil, errs
+				},
 			},
 		},
 	}
 }
 
-func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
@@ -70,7 +78,7 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 	return diag.FromErr(err)
 }
 
-func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
@@ -152,7 +160,7 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 	return resourceLDAPEntryRead(ctx, d, m)
 }
 
-func resourceLDAPEntryDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
