@@ -2,7 +2,7 @@ terraform {
   required_providers {
     ldap = {
       source  = "l-with/ldap"
-      version = ">= 0.0.2"
+      version = ">= 0.3"
     }
   }
 }
@@ -28,3 +28,20 @@ locals {
   user_data = jsondecode(data.ldap_entry.user.data_json)
 }
 
+resource "ldap_entry" "users_example_com" {
+  dn = "ou=users,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "user_jim_mit" {
+  dn = "uid=jimmit01,${ldap_entry.users_example_com.dn}"
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["users"]
+    givenName   = ["Jim"]
+    sn          = ["Mit"]
+    cn          = ["Jim Mit"]
+  })
+}

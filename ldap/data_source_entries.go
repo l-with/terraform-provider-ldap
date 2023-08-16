@@ -70,9 +70,8 @@ func dataSourceLDAPEntries() *schema.Resource {
 	}
 }
 
-func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
-
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
 	var ignore_attributes []string
@@ -94,36 +93,28 @@ func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m in
 	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns, base64encode_attributes, base64encode_attribute_patterns)
 
 	if err != nil {
-		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
-			// Object doesn't exist
-
-			// If Read is called from a datasource, return an error
-			if ctx.Value(CallerTypeKey) == DatasourceCaller {
-				return diag.FromErr(err)
-			}
-
-			// If not a call from datasource, remove the resource from the state
-			// and cleanly return
-			d.SetId("")
-			return nil
+		if err.(*ldap.Error).ResultCode != ldap.LDAPResultNoSuchObject {
+			return diag.FromErr(err)
 		}
-		return diag.FromErr(err)
+		err = nil
 	}
 
 	id := "(" + filter + "," + ou + ")"
 	d.SetId(id)
 
 	entriesList := []interface{}{}
-	for _, ldapEntry := range *ldapEntries {
-		jsonData, err := json.Marshal(ldapEntry.Entry)
-		if err != nil {
-			return diag.Errorf("error marshaling JSON for %q: %s", id, err)
+	if ldapEntries != nil {
+		for _, ldapEntry := range *ldapEntries {
+			jsonData, err := json.Marshal(ldapEntry.Entry)
+			if err != nil {
+				return diag.Errorf("error marshaling JSON for %q: %s", id, err)
+			}
+			values := map[string]interface{}{
+				"dn":        ldapEntry.Dn,
+				"data_json": string(jsonData),
+			}
+			entriesList = append(entriesList, values)
 		}
-		values := map[string]interface{}{
-			"dn":        ldapEntry.Dn,
-			"data_json": string(jsonData),
-		}
-		entriesList = append(entriesList, values)
 	}
 
 	if err := d.Set("entries", entriesList); err != nil {
