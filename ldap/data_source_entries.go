@@ -70,9 +70,8 @@ func dataSourceLDAPEntries() *schema.Resource {
 	}
 }
 
-func dataSourceLDAPEntriesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
-
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
 	var ignore_attributes []string
