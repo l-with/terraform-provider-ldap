@@ -182,7 +182,7 @@ func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 
 	for _, attr := range searchResult.Entries[0].Attributes {
 		if len(attr.Values) == 1 {
-			a := fmt.Sprintf("%s=%s", attr.Name, attr.Values[0])
+			a := fmt.Sprintf("%s=%s,", attr.Name, attr.Values[0])
 			if strings.HasPrefix(dn, a) {
 				continue
 			}

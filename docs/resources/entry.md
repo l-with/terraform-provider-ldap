@@ -8,6 +8,20 @@ description: |-
 
 Provides an LDAP entry. This can be used to create, modify, and delete LDAP entries.
 
+Two special handlings are implemented (somehow in deviation from the generic approach in this provider):
+
+The read function for the resource uses
+[NewSearchRequest](https://pkg.go.dev/github.com/go-ldap/ldap/v3@v3.4.5#NewSearchRequest) to read the entry 
+and thus a filter has to be specified.
+Therefor `(objectClass=*)` is used as a filter not filtering anything 
+(each entry has an objectClass as specified in [RFC 4512 Section 3.3.](https://www.rfc-editor.org/rfc/rfc4512.html#section-3.3)).
+
+The read function for the resource ignores the attribute corresponding to the relative part (RDN) of the DN (https://www.rfc-editor.org/rfc/rfc4512.html#section-2.3).
+This is necessary because this part is added as attribute to the LDAP entry by the LDAP server but is not specified in the terraform code.
+By now this only supports single valued RDNs (s. https://github.com/l-with/terraform-provider-ldap/issues/34). 
+In the example below the LDAP attribute `uid` is ignored on read because `uid=jimmit01` is the RDN 
+and the attribute `uid` with the value `jimmit01` is added implicitely by the LDAP server (although not part of `data_json`).
+
 ## Example Usage
 ```terraform
 resource "ldap_entry" "users_example_com" {
