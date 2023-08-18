@@ -26,3 +26,22 @@ and the attribute `uid` with the value `jimmit01` is added implicitely by the LD
 {{ tffile (printf "examples/resources/%s/resource.tf" .Name)}}
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Since terraform version 1.5.x there is an experimental feature 
+[Generating configuration](https://developer.hashicorp.com/terraform/language/import/generating-configuration).
+
+### Example Usage
+
+```terraform
+import {
+  to = ldap_entry.test
+  id = "uid=jimmit01,ou=users,dc=example,dc=com"
+}
+```
+
+```shell
+terraform init
+terraform plan -generate-config-out=generated_resources.tf
+```

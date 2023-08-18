@@ -19,6 +19,11 @@ func resourceLDAPEntry() *schema.Resource {
 		CreateContext: resourceLDAPEntryCreate,
 		UpdateContext: resourceLDAPEntryUpdate,
 		DeleteContext: resourceLDAPEntryDelete,
+
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceLDAPEntryImport,
+		},
+
 		Schema: map[string]*schema.Schema{
 			attributeNameDn: {
 				Description: "DN of the LDAP entry",
@@ -43,18 +48,19 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
+func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
+	return []*schema.ResourceData{d}, nil
+}
+
 func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
-	dn := d.Get(attributeNameDn).(string)
+	id := d.Id()
 
-	ldapEntry, err := cl.ReadEntryByDN(dn)
+	ldapEntry, err := cl.ReadEntryByDN(id)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
-	id := ldapEntry.Dn
-	d.SetId(id)
 
 	err = d.Set(attributeNameDn, id)
 	if err != nil {

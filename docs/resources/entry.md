@@ -54,3 +54,22 @@ resource "ldap_entry" "user_example" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+
+## Import
+
+Since terraform version 1.5.x there is an experimental feature 
+[Generating configuration](https://developer.hashicorp.com/terraform/language/import/generating-configuration).
+
+### Example Usage
+
+```terraform
+import {
+  to = ldap_entry.test
+  id = "uid=jimmit01,ou=users,dc=example,dc=com"
+}
+```
+
+```shell
+terraform init
+terraform plan -generate-config-out=generated_resources.tf
+```
