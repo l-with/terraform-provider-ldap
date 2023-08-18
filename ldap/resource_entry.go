@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/l-with/terraform-provider-ldap/client"
+	"log"
 )
 
 const attributeNameDataJson = "data_json"
@@ -19,6 +20,11 @@ func resourceLDAPEntry() *schema.Resource {
 		CreateContext: resourceLDAPEntryCreate,
 		UpdateContext: resourceLDAPEntryUpdate,
 		DeleteContext: resourceLDAPEntryDelete,
+
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceLDAPEntryImport,
+		},
+
 		Schema: map[string]*schema.Schema{
 			attributeNameDn: {
 				Description: "DN of the LDAP entry",
@@ -43,18 +49,21 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
+func resourceLDAPEntryImport(ctx context.Context, d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
+	log.Printf("[DEBUG] resourceLDAPEntryImport %s", d.Id())
+	return []*schema.ResourceData{d}, nil
+}
+
 func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	log.Printf("[DEBUG] resourceLDAPEntryRead")
 	cl := m.(*client.Client)
 
-	dn := d.Get(attributeNameDn).(string)
+	id := d.Id()
 
-	ldapEntry, err := cl.ReadEntryByDN(dn)
+	ldapEntry, err := cl.ReadEntryByDN(id)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
-	id := ldapEntry.Dn
-	d.SetId(id)
 
 	err = d.Set(attributeNameDn, id)
 	if err != nil {
