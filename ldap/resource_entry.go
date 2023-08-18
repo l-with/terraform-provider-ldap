@@ -49,8 +49,7 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
-func resourceLDAPEntryImport(ctx context.Context, d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
-	log.Printf("[DEBUG] resourceLDAPEntryImport %s", d.Id())
+func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
 	return []*schema.ResourceData{d}, nil
 }
 
