@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/l-with/terraform-provider-ldap/client"
-	"log"
 )
 
 const attributeNameDataJson = "data_json"
@@ -54,7 +53,6 @@ func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interf
 }
 
 func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	log.Printf("[DEBUG] resourceLDAPEntryRead")
 	cl := m.(*client.Client)
 
 	id := d.Id()
