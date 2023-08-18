@@ -152,8 +152,6 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes
 }
 
 func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
-	log.Printf("[DEBUG] ReadEntryByDN dn: %s", dn)
-
 	req := ldap.NewSearchRequest(
 		dn,
 		ldap.ScopeBaseObject,
