@@ -74,22 +74,13 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 	cl := m.(*client.Client)
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
+
 	var ignoreAttributes []string
-	for _, ignoreAttribute := range d.Get(attributeNameIgnoreAttributes).([]interface{}) {
-		ignoreAttributes = append(ignoreAttributes, ignoreAttribute.(string))
-	}
 	var ignoreAttributePatterns []string
-	for _, ignoreAttributePattern := range d.Get(attributeNameIgnoreAttributePatterns).([]interface{}) {
-		ignoreAttributePatterns = append(ignoreAttributePatterns, ignoreAttributePattern.(string))
-	}
 	var base64encodeAttributes []string
-	for _, base64encodeAttribute := range d.Get(attributeNameBase64EncodeAttributes).([]interface{}) {
-		base64encodeAttributes = append(base64encodeAttributes, base64encodeAttribute.(string))
-	}
 	var base64encodeAttributePatterns []string
-	for _, base64encodeAttributePattern := range d.Get(attributeNameBase64EncodeAttributePatterns).([]interface{}) {
-		base64encodeAttributePatterns = append(base64encodeAttributePatterns, base64encodeAttributePattern.(string))
-	}
+	getIgnoreAndBase64encode(d, &ignoreAttributes, &ignoreAttributePatterns, &base64encodeAttributes, &base64encodeAttributePatterns)
+
 	ldapEntries, err := cl.ReadEntriesByFilter(
 		ou,
 		"("+filter+")",

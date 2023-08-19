@@ -11,13 +11,13 @@ import (
 
 func setAttributesIgnoringAndBase64encodingAttributes(
 	ldapEntry *LdapEntry,
-	searchResult *ldap.SearchResult,
+	searchResultEntry *ldap.Entry,
 	ignoreAttributes *[]string,
 	ignoreAttributePatterns *[]string,
 	base64encodeAttributes *[]string,
 	base64encodeAttributePatterns *[]string,
 ) {
-	for _, attr := range searchResult.Entries[0].Attributes {
+	for _, attr := range searchResultEntry.Attributes {
 		if ignoreAttributes != nil {
 			if slices.Contains(*ignoreAttributes, attr.Name) {
 				continue
@@ -64,8 +64,8 @@ func setAttributesIgnoringAndBase64encodingAttributes(
 func getRDNAttributes(attributes *[]*ldap.EntryAttribute, dn string) (ignoreRDNAttributes *[]string) {
 	for _, attr := range *attributes {
 		if len(attr.Values) == 1 {
-			a := fmt.Sprintf("%s=%s,", attr.Name, attr.Values[0])
-			if strings.HasPrefix(dn, a) {
+			attributeValueString := fmt.Sprintf("%s=%s,", attr.Name, attr.Values[0])
+			if strings.HasPrefix(dn, attributeValueString) {
 				if ignoreRDNAttributes == nil {
 					ignoreRDNAttributes = new([]string)
 				}

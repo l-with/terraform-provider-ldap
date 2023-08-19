@@ -50,7 +50,7 @@ func (c *Client) ReadEntryByFilter(
 
 	setAttributesIgnoringAndBase64encodingAttributes(
 		ldapEntry,
-		searchResult,
+		searchResult.Entries[0],
 		ignoreAttributes,
 		ignoreAttributePatterns,
 		base64encodeAttributes,
@@ -89,14 +89,12 @@ func (c *Client) ReadEntriesByFilter(
 
 	ldapEntries = new([]LdapEntry)
 
-	log.Printf("Found %d entries", len(searchResult.Entries))
-
 	for _, entry := range searchResult.Entries {
 		var ldapEntry LdapEntry
 		ldapEntry.Entry = make(map[string][]string)
 		setAttributesIgnoringAndBase64encodingAttributes(
 			&ldapEntry,
-			searchResult,
+			entry,
 			ignoreAttributes,
 			ignoreAttributePatterns,
 			base64encodeAttributes,
@@ -117,8 +115,6 @@ func (c *Client) ReadEntryByDN(
 	base64encodeAttributes *[]string,
 	base64encodeAttributePatterns *[]string,
 ) (ldapEntry *LdapEntry, err error) {
-	log.Printf("[DEBUG] ReadEntryByDN %s", dn)
-
 	req := ldap.NewSearchRequest(
 		dn,
 		ldap.ScopeBaseObject,
@@ -153,7 +149,7 @@ func (c *Client) ReadEntryByDN(
 	}
 	setAttributesIgnoringAndBase64encodingAttributes(
 		ldapEntry,
-		searchResult,
+		searchResult.Entries[0],
 		ignoreAttributesIncludingRDNAttribute,
 		ignoreAttributePatterns,
 		base64encodeAttributes,
