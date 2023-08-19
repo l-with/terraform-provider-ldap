@@ -57,7 +57,7 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 
 	id := d.Id()
 
-	ldapEntry, err := cl.ReadEntryByDN(id)
+	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", nil, nil, nil, nil)
 	if err != nil {
 		return diag.FromErr(err)
 	}

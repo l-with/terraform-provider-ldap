@@ -9,30 +9,32 @@ import (
 )
 
 const attributeNameOu = "ou"
-const attributeNameFilter = "filter"
-const attributeNameIgnoreAttributes = "ignore_attributes"
-const attributeNameIgnoreAttributePatterns = "ignore_attribute_patterns"
-const attributeNameBase64EncodeAttributes = "base64encode_attributes"
-const attributeNameBase64EncodeAttributePatterns = "base64encode_attribute_patterns"
 
 func dataSourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceLDAPEntryRead,
 		Schema: map[string]*schema.Schema{
 			attributeNameDn: {
-				Description: "DN of the LDAP entry",
-				Type:        schema.TypeString,
-				Computed:    true,
+				Description:  "DN of the LDAP entry",
+				Type:         schema.TypeString,
+				Optional:     true,
+				Required:     false,
+				ExactlyOneOf: []string{attributeNameDn, attributeNameOu},
 			},
 			attributeNameOu: {
-				Description: "OU where LDAP entry will be searched",
-				Type:        schema.TypeString,
-				Required:    true,
+				Description:  "OU where LDAP entry will be searched",
+				Type:         schema.TypeString,
+				Optional:     true,
+				Required:     false,
+				ExactlyOneOf: []string{attributeNameDn, attributeNameOu},
 			},
 			attributeNameFilter: {
-				Description: "filter for selecting the LDAP entry",
-				Type:        schema.TypeString,
-				Required:    true,
+				Description:  "filter for selecting the LDAP entry, ignored if '" + attributeNameDn + "' is used",
+				Type:         schema.TypeString,
+				Optional:     true,
+				Required:     false,
+				Default:      dummyFilter,
+				AtLeastOneOf: []string{attributeNameDn, attributeNameOu, attributeNameFilter},
 			},
 			attributeNameDataJson: {
 				Description: "JSON-encoded string that is read as the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
@@ -70,26 +72,35 @@ func dataSourceLDAPEntry() *schema.Resource {
 func dataSourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
-	ou := d.Get(attributeNameOu).(string)
-	filter := d.Get(attributeNameFilter).(string)
-	var ignore_attributes []string
-	for _, ignore_attribute := range d.Get(attributeNameIgnoreAttributes).([]interface{}) {
-		ignore_attributes = append(ignore_attributes, ignore_attribute.(string))
+	var ok bool
+
+	var baseDn string
+
+	_, ok = d.GetOk(attributeNameDn)
+	if ok {
+		baseDn = d.Get(attributeNameDn).(string)
 	}
-	var ignore_attribute_patterns []string
-	for _, ignore_attribute_pattern := range d.Get(attributeNameIgnoreAttributePatterns).([]interface{}) {
-		ignore_attribute_patterns = append(ignore_attribute_patterns, ignore_attribute_pattern.(string))
-	}
-	var base64encode_attributes []string
-	for _, base64encode_attribute := range d.Get(attributeNameBase64EncodeAttributes).([]interface{}) {
-		base64encode_attributes = append(base64encode_attributes, base64encode_attribute.(string))
-	}
-	var base64encode_attribute_patterns []string
-	for _, base64encode_attribute_pattern := range d.Get(attributeNameBase64EncodeAttributePatterns).([]interface{}) {
-		base64encode_attribute_patterns = append(base64encode_attribute_patterns, base64encode_attribute_pattern.(string))
+	_, ok = d.GetOk(attributeNameOu)
+	if ok {
+		baseDn = d.Get(attributeNameOu).(string)
 	}
 
-	ldapEntry, err := cl.ReadEntryByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns, base64encode_attributes, base64encode_attribute_patterns)
+	filter := d.Get(attributeNameFilter).(string)
+
+	var ignoreAttributes []string
+	var ignoreAttributePatterns []string
+	var base64encodeAttributes []string
+	var base64encodeAttributePatterns []string
+	getIgnoreAndBase64encode(d, &ignoreAttributes, &ignoreAttributePatterns, &base64encodeAttributes, &base64encodeAttributePatterns)
+
+	ldapEntry, err := cl.ReadEntryByFilter(
+		baseDn,
+		"("+filter+")",
+		&ignoreAttributes,
+		&ignoreAttributePatterns,
+		&base64encodeAttributes,
+		&base64encodeAttributePatterns,
+	)
 
 	if err != nil {
 		return diag.FromErr(err)
