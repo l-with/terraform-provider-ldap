@@ -1,14 +1,10 @@
 package client
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"golang.org/x/exp/slices"
 	"log"
-	"regexp"
-	"strings"
 )
 
 type LdapEntry struct {
@@ -16,7 +12,13 @@ type LdapEntry struct {
 	Dn    string
 }
 
-func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string, base64encode_attributes []string, base64encode_attributes_patterns []string) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByFilter(
+	ou string, filter string,
+	ignoreAttributes *[]string,
+	ignoreAttributePatterns *[]string,
+	base64encodeAttributes *[]string,
+	base64encodeAttributePatterns *[]string,
+) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		ou,
 		ldap.ScopeWholeSubtree,
@@ -30,6 +32,7 @@ func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes [
 	)
 
 	searchResult, err := c.Conn.Search(req)
+
 	if err != nil {
 		return nil, err
 	}
@@ -42,52 +45,33 @@ func (c *Client) ReadEntryByFilter(ou string, filter string, ignore_attributes [
 		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The filter '%s' match more than one entry in the OU: %s", filter, ou))
 	}
 
-	var le LdapEntry
-	le.Entry = make(map[string][]string)
+	ldapEntry = new(LdapEntry)
+	ldapEntry.Entry = make(map[string][]string)
 
-	for _, attr := range searchResult.Entries[0].Attributes {
-		if slices.Contains(ignore_attributes, attr.Name) {
-			continue
-		}
-		ignore := false
-		for _, pattern := range ignore_attribute_patterns {
-			r := regexp.MustCompile(pattern)
-			if r.MatchString(attr.Name) {
-				ignore = true
-			}
-		}
-		if ignore {
-			continue
-		}
-		values := attr.Values
-		if slices.Contains(base64encode_attributes, attr.Name) {
-			for i, value := range values {
-				values[i] = base64.StdEncoding.EncodeToString([]byte(value))
-			}
-		}
-		base64encode := false
-		for _, pattern := range base64encode_attributes_patterns {
-			r := regexp.MustCompile(pattern)
-			if r.MatchString(attr.Name) {
-				base64encode = true
-			}
-		}
-		if base64encode {
-			for i, value := range values {
-				values[i] = base64.StdEncoding.EncodeToString([]byte(value))
-			}
-		}
-		le.Entry[attr.Name] = values
-	}
+	setAttributesIgnoringAndBase64encodingAttributes(
+		ldapEntry,
+		searchResult.Entries[0],
+		ignoreAttributes,
+		ignoreAttributePatterns,
+		base64encodeAttributes,
+		base64encodeAttributePatterns,
+	)
 
-	le.Dn = searchResult.Entries[0].DN
+	ldapEntry.Dn = searchResult.Entries[0].DN
 
-	return &le, nil
+	return ldapEntry, nil
 }
 
-func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes []string, ignore_attribute_patterns []string, base64encode_attributes []string, base64encode_attributes_patterns []string) (ldapEntries *[]LdapEntry, err error) {
+func (c *Client) ReadEntriesByFilter(
+	baseDn string,
+	filter string,
+	ignoreAttributes *[]string,
+	ignoreAttributePatterns *[]string,
+	base64encodeAttributes *[]string,
+	base64encodeAttributePatterns *[]string,
+) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
-		ou,
+		baseDn,
 		ldap.ScopeWholeSubtree,
 		ldap.NeverDerefAliases,
 		0,
@@ -103,55 +87,34 @@ func (c *Client) ReadEntriesByFilter(ou string, filter string, ignore_attributes
 		return nil, err
 	}
 
-	var les []LdapEntry
-
-	log.Printf("Found %d entries", len(searchResult.Entries))
+	ldapEntries = new([]LdapEntry)
 
 	for _, entry := range searchResult.Entries {
 		var ldapEntry LdapEntry
 		ldapEntry.Entry = make(map[string][]string)
-		for _, attr := range entry.Attributes {
-			if slices.Contains(ignore_attributes, attr.Name) {
-				continue
-			}
-			ignore := false
-			for _, pattern := range ignore_attribute_patterns {
-				r := regexp.MustCompile(pattern)
-				if r.MatchString(attr.Name) {
-					ignore = true
-				}
-			}
-			if ignore {
-				continue
-			}
-			values := attr.Values
-			if slices.Contains(base64encode_attributes, attr.Name) {
-				for i, value := range values {
-					values[i] = base64.StdEncoding.EncodeToString([]byte(value))
-				}
-			}
-			base64encode := false
-			for _, pattern := range base64encode_attributes_patterns {
-				r := regexp.MustCompile(pattern)
-				if r.MatchString(attr.Name) {
-					base64encode = true
-				}
-			}
-			if base64encode {
-				for i, value := range values {
-					values[i] = base64.StdEncoding.EncodeToString([]byte(value))
-				}
-			}
-			ldapEntry.Entry[attr.Name] = values
-		}
+		setAttributesIgnoringAndBase64encodingAttributes(
+			&ldapEntry,
+			entry,
+			ignoreAttributes,
+			ignoreAttributePatterns,
+			base64encodeAttributes,
+			base64encodeAttributePatterns,
+		)
 		ldapEntry.Dn = entry.DN
-		les = append(les, ldapEntry)
+		*ldapEntries = append(*ldapEntries, ldapEntry)
 	}
 
-	return &les, nil
+	return ldapEntries, nil
 }
 
-func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByDN(
+	dn string,
+	filter string,
+	ignoreAttributes *[]string,
+	ignoreAttributePatterns *[]string,
+	base64encodeAttributes *[]string,
+	base64encodeAttributePatterns *[]string,
+) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		dn,
 		ldap.ScopeBaseObject,
@@ -159,7 +122,7 @@ func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 		0,
 		0,
 		false,
-		"(objectClass=*)",
+		filter,
 		[]string{"*"},
 		[]ldap.Control{},
 	)
@@ -177,22 +140,25 @@ func (c *Client) ReadEntryByDN(dn string) (ldapEntry *LdapEntry, err error) {
 		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The dn '%s' matches more than one entry", dn))
 	}
 
-	var le LdapEntry
-	le.Entry = make(map[string][]string)
+	ldapEntry = new(LdapEntry)
+	ldapEntry.Entry = make(map[string][]string)
 
-	for _, attr := range searchResult.Entries[0].Attributes {
-		if len(attr.Values) == 1 {
-			a := fmt.Sprintf("%s=%s,", attr.Name, attr.Values[0])
-			if strings.HasPrefix(dn, a) {
-				continue
-			}
-		}
-		le.Entry[attr.Name] = attr.Values
+	ignoreAttributesIncludingRDNAttribute := getRDNAttributes(&searchResult.Entries[0].Attributes, dn)
+	if ignoreAttributes != nil {
+		*ignoreAttributesIncludingRDNAttribute = append(*ignoreAttributesIncludingRDNAttribute, *ignoreAttributes...)
 	}
+	setAttributesIgnoringAndBase64encodingAttributes(
+		ldapEntry,
+		searchResult.Entries[0],
+		ignoreAttributesIncludingRDNAttribute,
+		ignoreAttributePatterns,
+		base64encodeAttributes,
+		base64encodeAttributePatterns,
+	)
 
-	le.Dn = searchResult.Entries[0].DN
+	ldapEntry.Dn = searchResult.Entries[0].DN
 
-	return &le, nil
+	return ldapEntry, nil
 }
 
 func (c *Client) CreateEntry(ldapEntry *LdapEntry) error {

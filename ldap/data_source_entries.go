@@ -74,23 +74,21 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 	cl := m.(*client.Client)
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
-	var ignore_attributes []string
-	for _, ignore_attribute := range d.Get("ignore_attributes").([]interface{}) {
-		ignore_attributes = append(ignore_attributes, ignore_attribute.(string))
-	}
-	var ignore_attribute_patterns []string
-	for _, ignore_attribute_pattern := range d.Get("ignore_attribute_patterns").([]interface{}) {
-		ignore_attribute_patterns = append(ignore_attribute_patterns, ignore_attribute_pattern.(string))
-	}
-	var base64encode_attributes []string
-	for _, base64encode_attribute := range d.Get("base64encode_attributes").([]interface{}) {
-		base64encode_attributes = append(base64encode_attributes, base64encode_attribute.(string))
-	}
-	var base64encode_attribute_patterns []string
-	for _, base64encode_attribute_pattern := range d.Get("base64encode_attribute_patterns").([]interface{}) {
-		base64encode_attribute_patterns = append(base64encode_attribute_patterns, base64encode_attribute_pattern.(string))
-	}
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", ignore_attributes, ignore_attribute_patterns, base64encode_attributes, base64encode_attribute_patterns)
+
+	var ignoreAttributes []string
+	var ignoreAttributePatterns []string
+	var base64encodeAttributes []string
+	var base64encodeAttributePatterns []string
+	getIgnoreAndBase64encode(d, &ignoreAttributes, &ignoreAttributePatterns, &base64encodeAttributes, &base64encodeAttributePatterns)
+
+	ldapEntries, err := cl.ReadEntriesByFilter(
+		ou,
+		"("+filter+")",
+		&ignoreAttributes,
+		&ignoreAttributePatterns,
+		&base64encodeAttributes,
+		&base64encodeAttributePatterns,
+	)
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode != ldap.LDAPResultNoSuchObject {
