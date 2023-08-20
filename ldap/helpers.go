@@ -32,6 +32,7 @@ func getOldIgnoreAndBase64encode(d *schema.ResourceData) (oldIgnoreAndBas64Encod
 }
 
 func getOldAttributeListFromAttribute(d *schema.ResourceData, attributeName string) (oldAttributeList *[]string) {
+	oldAttributeList = new([]string)
 	var oldAttributeValue interface{}
 	if d.HasChange(attributeName) {
 		oldAttributeValue, _ = d.GetChange(attributeNameIgnoreAttributes)
