@@ -24,26 +24,8 @@ func GetRDNAttributes(ldapEntry *LdapEntry, dn string) (ignoreRDNAttributes *[]s
 }
 
 func IgnoreAndBase64encodeAttributes(ldapEntry *LdapEntry, ignoreAndBase64Encode *IgnoreAndBase64Encode) {
+	IgnoreAttributes(ldapEntry, ignoreAndBase64Encode)
 	for attributeName, attributeValues := range ldapEntry.Entry {
-		if ignoreAndBase64Encode.IgnoreAttributes != nil {
-			if slices.Contains(*ignoreAndBase64Encode.IgnoreAttributes, attributeName) {
-				delete(ldapEntry.Entry, attributeName)
-				continue // do not check base64encode
-			}
-		}
-		if ignoreAndBase64Encode.IgnoreAttributePatterns != nil {
-			ignore := false
-			for _, pattern := range *ignoreAndBase64Encode.IgnoreAttributePatterns {
-				r := regexp.MustCompile(pattern)
-				if r.MatchString(attributeName) {
-					ignore = true
-				}
-			}
-			if ignore {
-				delete(ldapEntry.Entry, attributeName)
-				continue // do not check base64encode
-			}
-		}
 		values := attributeValues
 		if ignoreAndBase64Encode.Base64encodeAttributes != nil {
 			if slices.Contains(*ignoreAndBase64Encode.Base64encodeAttributes, attributeName) {
@@ -67,5 +49,67 @@ func IgnoreAndBase64encodeAttributes(ldapEntry *LdapEntry, ignoreAndBase64Encode
 			}
 		}
 		ldapEntry.Entry[attributeName] = values
+	}
+}
+
+func IgnoreAndBase64decodeAttributes(ldapEntry *LdapEntry, ignoreAndBase64Encode *IgnoreAndBase64Encode) (err error) {
+	IgnoreAttributes(ldapEntry, ignoreAndBase64Encode)
+	for attributeName, attributeValues := range ldapEntry.Entry {
+		values := attributeValues
+		if ignoreAndBase64Encode.Base64encodeAttributes != nil {
+			if slices.Contains(*ignoreAndBase64Encode.Base64encodeAttributes, attributeName) {
+				for i, value := range values {
+					bytes, err := base64.StdEncoding.DecodeString(value)
+					if err != nil {
+						return err
+					}
+					values[i] = string(bytes)
+				}
+			}
+		}
+		if ignoreAndBase64Encode.Base64encodeAttributePatterns != nil {
+			base64encode := false
+			for _, pattern := range *ignoreAndBase64Encode.Base64encodeAttributePatterns {
+				r := regexp.MustCompile(pattern)
+				if r.MatchString(attributeName) {
+					base64encode = true
+				}
+			}
+			if base64encode {
+				for i, value := range values {
+					bytes, err := base64.StdEncoding.DecodeString(value)
+					if err != nil {
+						return err
+					}
+					values[i] = string(bytes)
+				}
+			}
+		}
+		ldapEntry.Entry[attributeName] = values
+	}
+	return nil
+}
+
+func IgnoreAttributes(ldapEntry *LdapEntry, ignoreAndBase64Encode *IgnoreAndBase64Encode) {
+	for attributeName, _ := range ldapEntry.Entry {
+		if ignoreAndBase64Encode.IgnoreAttributes != nil {
+			if slices.Contains(*ignoreAndBase64Encode.IgnoreAttributes, attributeName) {
+				delete(ldapEntry.Entry, attributeName)
+				continue // do not check base64encode
+			}
+		}
+		if ignoreAndBase64Encode.IgnoreAttributePatterns != nil {
+			ignore := false
+			for _, pattern := range *ignoreAndBase64Encode.IgnoreAttributePatterns {
+				r := regexp.MustCompile(pattern)
+				if r.MatchString(attributeName) {
+					ignore = true
+				}
+			}
+			if ignore {
+				delete(ldapEntry.Entry, attributeName)
+				continue // do not check base64encode
+			}
+		}
 	}
 }
