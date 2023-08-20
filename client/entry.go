@@ -7,20 +7,9 @@ import (
 	"log"
 )
 
-type LdapEntry struct {
-	Entry map[string][]string
-	Dn    string
-}
-
-func (c *Client) ReadEntryByFilter(
-	ou string, filter string,
-	ignoreAttributes *[]string,
-	ignoreAttributePatterns *[]string,
-	base64encodeAttributes *[]string,
-	base64encodeAttributePatterns *[]string,
-) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByFilter(baseDn string, filter string) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
-		ou,
+		baseDn,
 		ldap.ScopeWholeSubtree,
 		ldap.NeverDerefAliases,
 		0,
@@ -38,38 +27,26 @@ func (c *Client) ReadEntryByFilter(
 	}
 
 	if len(searchResult.Entries) == 0 {
-		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The filter '%s' doesn't match any entry in the OU: %s", filter, ou))
+		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The filter '%s' doesn't match any entry in the OU: %s", filter, baseDn))
 	}
 
 	if len(searchResult.Entries) > 1 {
-		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The filter '%s' match more than one entry in the OU: %s", filter, ou))
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The filter '%s' match more than one entry in the OU: %s", filter, baseDn))
 	}
 
 	ldapEntry = new(LdapEntry)
 	ldapEntry.Entry = make(map[string][]string)
 
-	setAttributesIgnoringAndBase64encodingAttributes(
-		ldapEntry,
-		searchResult.Entries[0],
-		ignoreAttributes,
-		ignoreAttributePatterns,
-		base64encodeAttributes,
-		base64encodeAttributePatterns,
-	)
+	for _, attr := range searchResult.Entries[0].Attributes {
+		ldapEntry.Entry[attr.Name] = attr.Values
+	}
 
 	ldapEntry.Dn = searchResult.Entries[0].DN
 
 	return ldapEntry, nil
 }
 
-func (c *Client) ReadEntriesByFilter(
-	baseDn string,
-	filter string,
-	ignoreAttributes *[]string,
-	ignoreAttributePatterns *[]string,
-	base64encodeAttributes *[]string,
-	base64encodeAttributePatterns *[]string,
-) (ldapEntries *[]LdapEntry, err error) {
+func (c *Client) ReadEntriesByFilter(baseDn string, filter string) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		baseDn,
 		ldap.ScopeWholeSubtree,
@@ -92,14 +69,9 @@ func (c *Client) ReadEntriesByFilter(
 	for _, entry := range searchResult.Entries {
 		var ldapEntry LdapEntry
 		ldapEntry.Entry = make(map[string][]string)
-		setAttributesIgnoringAndBase64encodingAttributes(
-			&ldapEntry,
-			entry,
-			ignoreAttributes,
-			ignoreAttributePatterns,
-			base64encodeAttributes,
-			base64encodeAttributePatterns,
-		)
+		for _, attr := range entry.Attributes {
+			ldapEntry.Entry[attr.Name] = attr.Values
+		}
 		ldapEntry.Dn = entry.DN
 		*ldapEntries = append(*ldapEntries, ldapEntry)
 	}
@@ -110,10 +82,6 @@ func (c *Client) ReadEntriesByFilter(
 func (c *Client) ReadEntryByDN(
 	dn string,
 	filter string,
-	ignoreAttributes *[]string,
-	ignoreAttributePatterns *[]string,
-	base64encodeAttributes *[]string,
-	base64encodeAttributePatterns *[]string,
 ) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		dn,
@@ -143,25 +111,17 @@ func (c *Client) ReadEntryByDN(
 	ldapEntry = new(LdapEntry)
 	ldapEntry.Entry = make(map[string][]string)
 
-	ignoreAttributesIncludingRDNAttribute := getRDNAttributes(&searchResult.Entries[0].Attributes, dn)
-	if ignoreAttributes != nil {
-		*ignoreAttributesIncludingRDNAttribute = append(*ignoreAttributesIncludingRDNAttribute, *ignoreAttributes...)
+	for _, attr := range searchResult.Entries[0].Attributes {
+		ldapEntry.Entry[attr.Name] = attr.Values
 	}
-	setAttributesIgnoringAndBase64encodingAttributes(
-		ldapEntry,
-		searchResult.Entries[0],
-		ignoreAttributesIncludingRDNAttribute,
-		ignoreAttributePatterns,
-		base64encodeAttributes,
-		base64encodeAttributePatterns,
-	)
-
 	ldapEntry.Dn = searchResult.Entries[0].DN
 
 	return ldapEntry, nil
 }
 
-func (c *Client) CreateEntry(ldapEntry *LdapEntry) error {
+func (c *Client) CreateEntry(
+	ldapEntry *LdapEntry,
+) error {
 	addRequest := ldap.NewAddRequest(ldapEntry.Dn, []ldap.Control{})
 
 	for attrName, attrValues := range ldapEntry.Entry {

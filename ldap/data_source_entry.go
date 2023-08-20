@@ -8,8 +8,6 @@ import (
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
-const attributeNameOu = "ou"
-
 func dataSourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceLDAPEntryRead,
@@ -87,20 +85,9 @@ func dataSourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interf
 
 	filter := d.Get(attributeNameFilter).(string)
 
-	var ignoreAttributes []string
-	var ignoreAttributePatterns []string
-	var base64encodeAttributes []string
-	var base64encodeAttributePatterns []string
-	getIgnoreAndBase64encode(d, &ignoreAttributes, &ignoreAttributePatterns, &base64encodeAttributes, &base64encodeAttributePatterns)
-
-	ldapEntry, err := cl.ReadEntryByFilter(
-		baseDn,
-		"("+filter+")",
-		&ignoreAttributes,
-		&ignoreAttributePatterns,
-		&base64encodeAttributes,
-		&base64encodeAttributePatterns,
-	)
+	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
+	ldapEntry, err := cl.ReadEntryByFilter(baseDn, "("+filter+")")
+	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
 
 	if err != nil {
 		return diag.FromErr(err)

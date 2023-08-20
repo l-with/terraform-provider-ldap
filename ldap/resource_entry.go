@@ -10,9 +10,6 @@ import (
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
-const attributeNameDataJson = "data_json"
-const attributeNameDn = "dn"
-
 func resourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext:   resourceLDAPEntryRead,
@@ -44,6 +41,30 @@ func resourceLDAPEntry() *schema.Resource {
 					return nil, errs
 				},
 			},
+			attributeNameIgnoreAttributes: {
+				Description: "list of attributes to ignore",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			attributeNameIgnoreAttributePatterns: {
+				Description: "list of attribute patterns to ignore",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			attributeNameBase64EncodeAttributes: {
+				Description: "list of base64 encoded attributes",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			attributeNameBase64EncodeAttributePatterns: {
+				Description: "list of attribute patterns for base64 encoded attributes",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
@@ -57,10 +78,14 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 
 	id := d.Id()
 
-	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", nil, nil, nil, nil)
+	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
+	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")")
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, id)
+	*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
+	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
 
 	err = d.Set(attributeNameDn, id)
 	if err != nil {
@@ -84,7 +109,7 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 	return diag.FromErr(err)
 }
 
-func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
@@ -93,11 +118,13 @@ func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interf
 
 	var ldapEntry client.LdapEntry
 
-	ldapEntry.Dn = dn
+	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	err := json.Unmarshal([]byte(dataJson.(string)), &ldapEntry.Entry)
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	client.IgnoreAndBase64decodeAttributes(&ldapEntry, ignoreAndBase64Encode)
+	ldapEntry.Dn = dn
 
 	err = cl.CreateEntry(&ldapEntry)
 	if err != nil {
@@ -106,21 +133,21 @@ func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interf
 
 	d.SetId(dn)
 
-	return nil
+	return resourceLDAPEntryRead(ctx, d, m)
 }
 
 func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
-	var err error
-
 	dn := d.Get(attributeNameDn).(string)
+
+	newIgnoreAndBase64Encode := getIgnoreAndBase64encode(d)
+	oldIgnoreAndBas64Encode := getOldIgnoreAndBase64encode(d)
+	var err error
 	if d.HasChanges(attributeNameDataJson) {
 		oldDataJson, newDataJson := d.GetChange(attributeNameDataJson)
 		var ldapEntryOld client.LdapEntry
 		var ldapEntryNew client.LdapEntry
-		ldapEntryOld.Dn = dn
-		ldapEntryNew.Dn = dn
 		err = json.Unmarshal([]byte(oldDataJson.(string)), &ldapEntryOld.Entry)
 		if err != nil {
 			return diag.FromErr(err)
@@ -129,6 +156,17 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 		if err != nil {
 			return diag.FromErr(err)
 		}
+		err = client.IgnoreAndBase64decodeAttributes(&ldapEntryOld, oldIgnoreAndBas64Encode)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = client.IgnoreAndBase64decodeAttributes(&ldapEntryNew, newIgnoreAndBase64Encode)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		ldapEntryOld.Dn = dn
+		ldapEntryNew.Dn = dn
+
 		var oldAttributeNames []interface{}
 		for oldAttributeName := range ldapEntryOld.Entry {
 			oldAttributeNames = append(oldAttributeNames, oldAttributeName)

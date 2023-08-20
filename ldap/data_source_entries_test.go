@@ -35,6 +35,10 @@ func TestAccDataSourceLdapEntries(t *testing.T) {
 							if ldapEntry.Entry["cn"][0] != "Jim Mit" {
 								return errors.New("cn: expected 'Jim Mit', got '" + ldapEntry.Entry["cn"][0] + "'")
 							}
+							_, mailInEntry := ldapEntry.Entry["mail"]
+							if mailInEntry {
+								return errors.New("mail: expected to be ignored, got '" + ldapEntry.Entry["mail"][0] + "'")
+							}
 							snBytes, err := base64.StdEncoding.DecodeString(ldapEntry.Entry["sn"][0])
 							if err != nil {
 								return err
@@ -83,6 +87,7 @@ resource "ldap_entry" "user_jimmit" {
     givenName   = ["Jim"]
     sn          = ["Mit"]
     cn          = ["Jim Mit"]
+    mail        = ["jim.mit@example.com"]
   })
 }
 
@@ -94,9 +99,9 @@ resource "ldap_entry" "user_larrymit" {
     givenName   = ["Larry"]
     sn          = ["Mit"]
     cn          = ["Larry Mit"]
+    mail        = ["larry.mit@example.com"]
   })
 }
-
 
 data "ldap_entries" "mits" {
   depends_on = [
@@ -105,6 +110,9 @@ data "ldap_entries" "mits" {
   ]
   ou          = ldap_entry.users_example_com.dn
   filter      = "sn=Mit"
+  ignore_attributes = [
+    "mail"
+  ]
   base64encode_attributes = [
     "sn"
   ]

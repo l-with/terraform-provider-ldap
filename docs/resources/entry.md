@@ -51,6 +51,13 @@ resource "ldap_entry" "user_example" {
 - `data_json` (String) JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)
 - `dn` (String) DN of the LDAP entry
 
+### Optional
+
+- `base64encode_attribute_patterns` (List of String) list of attribute patterns for base64 encoded attributes
+- `base64encode_attributes` (List of String) list of base64 encoded attributes
+- `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
+- `ignore_attributes` (List of String) list of attributes to ignore
+
 ### Read-Only
 
 - `id` (String) The ID of this resource.
