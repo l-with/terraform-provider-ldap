@@ -8,8 +8,6 @@ import (
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
-const attributeNameOu = "ou"
-
 func dataSourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceLDAPEntryRead,

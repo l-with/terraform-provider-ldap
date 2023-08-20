@@ -10,9 +10,6 @@ import (
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
-const attributeNameDataJson = "data_json"
-const attributeNameDn = "dn"
-
 func resourceLDAPEntry() *schema.Resource {
 	return &schema.Resource{
 		ReadContext:   resourceLDAPEntryRead,
