@@ -54,13 +54,13 @@ func resourceLDAPEntry() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNameBase64EncodeAttributes: {
-				Description: "list of attributes to be encoded to base64",
+				Description: "list of base64 encoded attributes",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNameBase64EncodeAttributePatterns: {
-				Description: "list of attribute patterns to be encoded to base64",
+				Description: "list of attribute patterns for base64 encoded attributes",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -109,7 +109,7 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 	return diag.FromErr(err)
 }
 
-func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
@@ -123,7 +123,7 @@ func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interf
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	client.IgnoreAndBase64encodeAttributes(&ldapEntry, ignoreAndBase64Encode)
+	client.IgnoreAndBase64decodeAttributes(&ldapEntry, ignoreAndBase64Encode)
 	ldapEntry.Dn = dn
 
 	err = cl.CreateEntry(&ldapEntry)
@@ -133,7 +133,7 @@ func resourceLDAPEntryCreate(_ context.Context, d *schema.ResourceData, m interf
 
 	d.SetId(dn)
 
-	return nil
+	return resourceLDAPEntryRead(ctx, d, m)
 }
 
 func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -156,8 +156,14 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		client.IgnoreAndBase64encodeAttributes(&ldapEntryOld, oldIgnoreAndBas64Encode)
-		client.IgnoreAndBase64encodeAttributes(&ldapEntryNew, newIgnoreAndBase64Encode)
+		err = client.IgnoreAndBase64decodeAttributes(&ldapEntryOld, oldIgnoreAndBas64Encode)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = client.IgnoreAndBase64decodeAttributes(&ldapEntryNew, newIgnoreAndBase64Encode)
+		if err != nil {
+			return diag.FromErr(err)
+		}
 		ldapEntryOld.Dn = dn
 		ldapEntryNew.Dn = dn
 
