@@ -28,7 +28,7 @@ This is done in a strict generic way: the details are specified through the attr
 I am convinced that a terraform provider should match the structure of the API used.
 
 The other perspective would be to match the structure of a specific LDAP service. 
-The argument against is that LDAP services are generic tools with different characteristic.   
+The argument against is that LDAP services are generic tools with different characteristics.   
 
 If you need specific structures, you can code them in terraform.
 If you like to reuse these structures, you can implement a terraform module.
