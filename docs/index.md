@@ -23,6 +23,16 @@ The provider makes it possible to provide an LDAP entry. This can be used to cre
 
 This is done in a strict generic way: the details are specified through the attribute `data_json`.
 
+## Why generic?
+
+I am convinced that a terraform provider should match the structure of the API used.
+
+The other perspective would be to match the structure of a specific LDAP service. 
+The argument against is that LDAP services are generic tools with different characteristic.   
+
+If you need specific structures, you can code them in terraform.
+If you like to reuse these structures, you can implement a terraform module.
+
 ## Example Usage
 
 ```terraform
