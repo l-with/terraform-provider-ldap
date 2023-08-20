@@ -121,12 +121,6 @@ func (c *Client) ReadEntryByDN(
 
 func (c *Client) CreateEntry(
 	ldapEntry *LdapEntry,
-	/*
-	   IgnoreAttributes *[]string,
-	   IgnoreAttributePatterns *[]string,
-	   Base64encodeAttributes *[]string,
-	   Base64encodeAttributePatterns *[]string,
-	*/
 ) error {
 	addRequest := ldap.NewAddRequest(ldapEntry.Dn, []ldap.Control{})
 
