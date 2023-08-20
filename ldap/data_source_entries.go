@@ -75,20 +75,7 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 	ou := d.Get("ou").(string)
 	filter := d.Get("filter").(string)
 
-	var ignoreAttributes []string
-	var ignoreAttributePatterns []string
-	var base64encodeAttributes []string
-	var base64encodeAttributePatterns []string
-	getIgnoreAndBase64encode(d, &ignoreAttributes, &ignoreAttributePatterns, &base64encodeAttributes, &base64encodeAttributePatterns)
-
-	ldapEntries, err := cl.ReadEntriesByFilter(
-		ou,
-		"("+filter+")",
-		&ignoreAttributes,
-		&ignoreAttributePatterns,
-		&base64encodeAttributes,
-		&base64encodeAttributePatterns,
-	)
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")")
 
 	if err != nil {
 		if err.(*ldap.Error).ResultCode != ldap.LDAPResultNoSuchObject {
@@ -100,9 +87,11 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 	id := "(" + filter + "," + ou + ")"
 	d.SetId(id)
 
+	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	entriesList := []interface{}{}
 	if ldapEntries != nil {
 		for _, ldapEntry := range *ldapEntries {
+			client.IgnoreAndBase64encodeAttributes(&ldapEntry, ignoreAndBase64Encode)
 			jsonData, err := json.Marshal(ldapEntry.Entry)
 			if err != nil {
 				return diag.Errorf("error marshaling JSON for %q: %s", id, err)

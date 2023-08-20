@@ -20,6 +20,22 @@ func TestAccResourceLdapEntry(t *testing.T) {
 					resource.TestCheckResourceAttr("ldap_entry.users_example_com", "dn", "ou=users,dc=example,dc=com"),
 					resource.TestCheckResourceAttr("ldap_entry.user_jimmit", "dn", "uid=jimmit01,ou=users,dc=example,dc=com"),
 					resource.TestCheckResourceAttrWith(
+						"ldap_entry.user_jimmit",
+						"data_json",
+						func(value string) error {
+							var ldapEntry client.LdapEntry
+							err := json.Unmarshal([]byte(value), &ldapEntry.Entry)
+							if err != nil {
+								return err
+							}
+							_, uuidInEntry := ldapEntry.Entry["uuid"]
+							if uuidInEntry {
+								return errors.New("uuid: expected to be ignored, got '" + ldapEntry.Entry["uuid"][0] + "'")
+							}
+							return nil
+						},
+					),
+					resource.TestCheckResourceAttrWith(
 						"data.ldap_entry.user_jimmit",
 						"data_json",
 						func(value string) error {
@@ -70,6 +86,7 @@ data "ldap_entry" "user_jimmit" {
   ou          = ldap_entry.users_example_com.dn
   filter      = "cn=Jim Mit"
 }
+
 data "ldap_entries" "search" {
   depends_on = [ldap_entry.user_jimmit]
   ou         = "dc=example,dc=com"
