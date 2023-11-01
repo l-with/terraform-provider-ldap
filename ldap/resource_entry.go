@@ -84,7 +84,9 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 		return diag.FromErr(err)
 	}
 	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, id)
-	*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
+	if ignoreRDNAttributes != nil {
+		*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
+	}
 	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
 
 	err = d.Set(attributeNameDn, id)
