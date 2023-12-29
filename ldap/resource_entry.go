@@ -78,11 +78,15 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 
 	id := d.Id()
 
-	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")")
 	if err != nil {
+		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
+			d.SetId("")
+			return nil
+		}
 		return diag.FromErr(err)
 	}
+	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, id)
 	if ignoreRDNAttributes != nil {
 		*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
@@ -91,10 +95,6 @@ func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interfac
 
 	err = d.Set(attributeNameDn, id)
 	if err != nil {
-		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
-			d.SetId("")
-			return nil
-		}
 		return diag.FromErr(err)
 	}
 
