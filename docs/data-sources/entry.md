@@ -37,6 +37,7 @@ data "ldap_entry" "user_jim_mit" {
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
 - `ou` (String) OU where LDAP entry will be searched
+- `restrict_attributes` (List of String) list of attributes to which reading is restricted
 
 ### Read-Only
 
