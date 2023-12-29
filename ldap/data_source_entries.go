@@ -56,6 +56,12 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNameRestrictAttributes: {
+				Description: "list of attributes to which reading from the LDAP server is restricted",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 			attributeNameBase64EncodeAttributes: {
 				Description: "list of attributes to be encoded to base64",
 				Type:        schema.TypeList,
@@ -74,11 +80,20 @@ func dataSourceLDAPEntries() *schema.Resource {
 
 func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
-	ou := d.Get("ou").(string)
-	filter := d.Get("filter").(string)
 
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")")
+	ou := d.Get(attributeNameOu).(string)
+	filter := d.Get(attributeNameFilter).(string)
 
+	var ok bool
+	restrictAttributes := &[]string{"*"}
+	_, ok = d.GetOk(attributeNameRestrictAttributes)
+	if ok {
+		restrictAttributes = getAttributeListFromAttribute(d, attributeNameRestrictAttributes)
+	}
+
+	restrictAttributes = getAttributeListFromAttribute(d, attributeNameRestrictAttributes)
+
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", restrictAttributes)
 	if err != nil {
 		if err.(*ldap.Error).ResultCode != ldap.LDAPResultNoSuchObject {
 			return diag.FromErr(err)

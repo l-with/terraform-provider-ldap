@@ -51,6 +51,12 @@ func dataSourceLDAPEntry() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNameRestrictAttributes: {
+				Description: "list of attributes to which reading is restricted",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 			attributeNameBase64EncodeAttributes: {
 				Description: "list of attributes to be encoded to base64",
 				Type:        schema.TypeList,
@@ -82,11 +88,17 @@ func dataSourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interf
 	if ok {
 		baseDn = d.Get(attributeNameOu).(string)
 	}
-
 	filter := d.Get(attributeNameFilter).(string)
 
+	restrictAttributes := &[]string{"*"}
+	_, ok = d.GetOk(attributeNameRestrictAttributes)
+	if ok {
+		restrictAttributes = getAttributeListFromAttribute(d, attributeNameRestrictAttributes)
+	}
+
+	ldapEntry, err := cl.ReadEntryByFilter(baseDn, "("+filter+")", restrictAttributes)
+
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
-	ldapEntry, err := cl.ReadEntryByFilter(baseDn, "("+filter+")")
 	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
 
 	if err != nil {
