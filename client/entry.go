@@ -7,7 +7,11 @@ import (
 	"log"
 )
 
-func (c *Client) ReadEntryByFilter(baseDn string, filter string) (ldapEntry *LdapEntry, err error) {
+func (c *Client) ReadEntryByFilter(
+	baseDn string,
+	filter string,
+	attributes *[]string,
+) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		baseDn,
 		ldap.ScopeWholeSubtree,
@@ -16,7 +20,7 @@ func (c *Client) ReadEntryByFilter(baseDn string, filter string) (ldapEntry *Lda
 		0,
 		false,
 		filter,
-		[]string{"*"},
+		*attributes,
 		[]ldap.Control{},
 	)
 
@@ -46,7 +50,11 @@ func (c *Client) ReadEntryByFilter(baseDn string, filter string) (ldapEntry *Lda
 	return ldapEntry, nil
 }
 
-func (c *Client) ReadEntriesByFilter(baseDn string, filter string) (ldapEntries *[]LdapEntry, err error) {
+func (c *Client) ReadEntriesByFilter(
+	baseDn string,
+	filter string,
+	attributes *[]string,
+) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		baseDn,
 		ldap.ScopeWholeSubtree,
@@ -55,7 +63,7 @@ func (c *Client) ReadEntriesByFilter(baseDn string, filter string) (ldapEntries 
 		0,
 		false,
 		filter,
-		[]string{"*"},
+		*attributes,
 		[]ldap.Control{},
 	)
 
