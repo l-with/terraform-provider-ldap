@@ -17,7 +17,7 @@ Attributes can be restricted by `restrict_attributes`.
 
 Attributes can be encoded base64 by `base64encode_attributes` or `base64encode_attribute_patterns`.
 
-Since version v1.4 `dn` can be uses as alternative to `ou` and `filter`.
+Since version v0.4 `dn` can be used as alternative to `ou` and `filter`.
 
 ## Resources
 
