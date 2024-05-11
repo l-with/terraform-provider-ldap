@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/go-ldap/ldap/v3"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/l-with/terraform-provider-ldap/client"
@@ -32,6 +34,19 @@ func resourceLDAPEntry() *schema.Resource {
 				Description: "JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
 				Type:        schema.TypeString,
 				Required:    true,
+				DiffSuppressFunc: func(k, oldValue, newValue string, d *schema.ResourceData) bool {
+					var oldLdapEntry client.LdapEntry
+					var newLdapEntry client.LdapEntry
+					json.Unmarshal([]byte(oldValue), &oldLdapEntry.Entry)
+					json.Unmarshal([]byte(newValue), &newLdapEntry.Entry)
+					client.SortLdapEntryValues(&oldLdapEntry)
+					client.SortLdapEntryValues(&newLdapEntry)
+					oldJsonData, _ := json.Marshal(oldLdapEntry.Entry)
+					newJsonData, _ := json.Marshal(newLdapEntry.Entry)
+					stringOldJsonData := string(oldJsonData)
+					stringNewJsonData := string(newJsonData)
+					return stringOldJsonData == stringNewJsonData
+				},
 				ValidateFunc: func(value interface{}, k string) (ws []string, errs []error) {
 					decoded := make(map[string][]string)
 					err := json.Unmarshal([]byte(value.(string)), &decoded)
@@ -73,7 +88,7 @@ func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interf
 	return []*schema.ResourceData{d}, nil
 }
 
-func resourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
 
 	id := d.Id()
@@ -134,6 +149,9 @@ func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m inte
 	}
 
 	d.SetId(dn)
+
+	//return diag.FromErr(errors.New("test"))
+	//time.Sleep(120 * time.Second)
 
 	return resourceLDAPEntryRead(ctx, d, m)
 }
@@ -206,7 +224,8 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 	return resourceLDAPEntryRead(ctx, d, m)
 }
 
-func resourceLDAPEntryDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceLDAPEntryDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	tflog.Info(ctx, "Delete")
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
