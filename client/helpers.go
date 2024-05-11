@@ -3,9 +3,11 @@ package client
 import (
 	"encoding/base64"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"regexp"
+	"sort"
 	"strings"
+
+	"golang.org/x/exp/slices"
 )
 
 func GetRDNAttributes(ldapEntry *LdapEntry, dn string) (ignoreRDNAttributes *[]string) {
@@ -110,6 +112,14 @@ func IgnoreAttributes(ldapEntry *LdapEntry, ignoreAndBase64Encode *IgnoreAndBase
 				delete(ldapEntry.Entry, attributeName)
 				continue // do not check base64encode
 			}
+		}
+	}
+}
+
+func SortLdapEntryValues(ldapEntry *LdapEntry) {
+	for _, attributeValues := range ldapEntry.Entry {
+		if len(attributeValues) > 1 {
+			sort.Strings(attributeValues)
 		}
 	}
 }
