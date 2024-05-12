@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -36,9 +37,55 @@ func resourceLDAPEntry() *schema.Resource {
 				Required:    true,
 				DiffSuppressFunc: func(k, oldValue, newValue string, d *schema.ResourceData) bool {
 					var oldLdapEntry client.LdapEntry
-					var newLdapEntry client.LdapEntry
 					json.Unmarshal([]byte(oldValue), &oldLdapEntry.Entry)
+					var newLdapEntry client.LdapEntry
 					json.Unmarshal([]byte(newValue), &newLdapEntry.Entry)
+
+					attributeNamesCaseSensitive := EntryAttributeNamesCaseSensitive
+					if !attributeNamesCaseSensitive {
+						caseSensitiveAttributeList := new([]string)
+						for _, caseSensitiveAttributeListValue := range d.Get(attributeNameCaseSensitiveAttibuteNames).([]interface{}) {
+							*caseSensitiveAttributeList = append(*caseSensitiveAttributeList, caseSensitiveAttributeListValue.(string))
+						}
+						{
+							toLower := true
+							for attributeName := range oldLdapEntry.Entry {
+								for _, caseSensitiveAttribute := range *caseSensitiveAttributeList {
+									if strings.EqualFold(attributeName, caseSensitiveAttribute) {
+										toLower = false
+										break
+									}
+								}
+								if !toLower {
+									continue
+								}
+								if attributeName == strings.ToLower(attributeName) {
+									continue
+								}
+								oldLdapEntry.Entry[strings.ToLower(attributeName)] = oldLdapEntry.Entry[attributeName]
+								delete(oldLdapEntry.Entry, attributeName)
+							}
+						}
+						{
+							toLower := true
+							for attributeName := range newLdapEntry.Entry {
+								for _, caseSensitiveAttribute := range *caseSensitiveAttributeList {
+									if strings.EqualFold(attributeName, caseSensitiveAttribute) {
+										toLower = false
+										continue
+									}
+								}
+								if !toLower {
+									continue
+								}
+								if attributeName == strings.ToLower(attributeName) {
+									continue
+								}
+								newLdapEntry.Entry[strings.ToLower(attributeName)] = newLdapEntry.Entry[attributeName]
+								delete(newLdapEntry.Entry, attributeName)
+							}
+						}
+					}
 					client.SortLdapEntryValues(&oldLdapEntry)
 					client.SortLdapEntryValues(&newLdapEntry)
 					oldJsonData, _ := json.Marshal(oldLdapEntry.Entry)
@@ -76,6 +123,12 @@ func resourceLDAPEntry() *schema.Resource {
 			},
 			attributeNameBase64EncodeAttributePatterns: {
 				Description: "list of attribute patterns for base64 encoded attributes",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			attributeNameCaseSensitiveAttibuteNames: {
+				Description: "list of attributes with case-sensitive names",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},

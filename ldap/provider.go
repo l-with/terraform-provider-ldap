@@ -2,6 +2,7 @@ package ldap
 
 import (
 	"context"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client2 "github.com/l-with/terraform-provider-ldap/client"
@@ -17,6 +18,7 @@ const attributeNameBindPassword = "bind_password"
 const ldapBindPasswordEnvVarName = "LDAP_BIND_PASSWORD"
 const attributeNameTls = "tls"
 const attributeNameTlsInsecure = "tls_insecure"
+const attributeEntryAttributeNamesCaseSensitive = "entry_attribute_names_case_sensitive"
 
 func Provider() *schema.Provider {
 	return &schema.Provider{
@@ -57,6 +59,12 @@ func Provider() *schema.Provider {
 				Default:     false,
 				Description: "Don't verify the server TLS certificate. Default is `false`.",
 			},
+			attributeEntryAttributeNamesCaseSensitive: {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				Description: "if the entry attribute names should be handeled case sensitive (for state handling in resource ldap_entry)",
+			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"ldap_entry": resourceLDAPEntry(),
@@ -69,7 +77,10 @@ func Provider() *schema.Provider {
 	}
 }
 
+var EntryAttributeNamesCaseSensitive bool
+
 func providerConfigure(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+	EntryAttributeNamesCaseSensitive = d.Get(attributeEntryAttributeNamesCaseSensitive).(bool)
 	client := &client2.Client{
 		Host:         d.Get(attributeNameHost).(string),
 		Port:         d.Get(attributeNamePort).(int),

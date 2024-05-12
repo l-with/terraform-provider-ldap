@@ -55,6 +55,7 @@ resource "ldap_entry" "user_example" {
 
 - `base64encode_attribute_patterns` (List of String) list of attribute patterns for base64 encoded attributes
 - `base64encode_attributes` (List of String) list of base64 encoded attributes
+- `case_sensitive_attribute_names` (List of String) list of attributes with case-sensitive names
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
 

@@ -9,5 +9,6 @@ const attributeNameBase64EncodeAttributePatterns = "base64encode_attribute_patte
 const attributeNameDataJson = "data_json"
 const attributeNameDn = "dn"
 const attributeNameOu = "ou"
+const attributeNameCaseSensitiveAttibuteNames = "case_sensitive_attribute_names"
 
 const dummyFilter = "objectClass=*"
