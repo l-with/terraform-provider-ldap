@@ -90,6 +90,7 @@ func (c *Client) ReadEntriesByFilter(
 func (c *Client) ReadEntryByDN(
 	dn string,
 	filter string,
+	attributes *[]string,
 ) (ldapEntry *LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		dn,
@@ -99,10 +100,11 @@ func (c *Client) ReadEntryByDN(
 		0,
 		false,
 		filter,
-		[]string{"*"},
+		*attributes,
 		[]ldap.Control{},
 	)
 
+	log.Printf("[INFO] attributes %v", *attributes)
 	searchResult, err := c.Conn.Search(req)
 	if err != nil {
 		return nil, err

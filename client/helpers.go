@@ -123,3 +123,11 @@ func SortLdapEntryValues(ldapEntry *LdapEntry) {
 		}
 	}
 }
+
+func GetAttributeNames(ldapEntry *LdapEntry) (attributeNames *[]string) {
+	attributeNames = new([]string)
+	for attributeName := range ldapEntry.Entry {
+		*attributeNames = append(*attributeNames, attributeName)
+	}
+	return attributeNames
+}

@@ -146,7 +146,18 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 
 	id := d.Id()
 
-	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")")
+	var attributes *[]string
+	{
+		var ldapEntry client.LdapEntry
+		dataJson := d.Get(attributeNameDataJson)
+		err := json.Unmarshal([]byte(dataJson.(string)), &ldapEntry.Entry)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		attributes = client.GetAttributeNames(&ldapEntry)
+	}
+
+	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", attributes)
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
 			d.SetId("")
