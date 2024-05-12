@@ -32,7 +32,7 @@ For efficiency reasons this provider uses ldap queries.
 The provider can be configured by `entry_attribute_names_case_sensitive` to handle attribute names case sensitive or not.
 For efficiency reasons the default is `true`.
 
-If set to `false` it os possible to declare a list of attributes to be handled case sensitive by `case_sensitive_attribute_names` in the resource.
+If `entry_attribute_names_case_sensitive` is set to `false` in the provider stanza, a list of attributes to be handled case sensitive can be specified by `case_sensitive_attribute_names` in the resource.
 
 ## Why generic?
 
