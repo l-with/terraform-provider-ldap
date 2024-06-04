@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/go-ldap/ldap/v3 v3.4.8
-	github.com/hashicorp/terraform-plugin-docs v0.19.3
+	github.com/hashicorp/terraform-plugin-docs v0.19.4
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.34.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
