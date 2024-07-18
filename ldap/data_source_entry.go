@@ -97,6 +97,9 @@ func dataSourceLDAPEntryRead(_ context.Context, d *schema.ResourceData, m interf
 	}
 
 	ldapEntry, err := cl.ReadEntryByFilter(baseDn, "("+filter+")", restrictAttributes)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
