@@ -17,7 +17,6 @@ on:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    version: 2
     steps:
       -
         name: Checkout
@@ -43,6 +42,7 @@ jobs:
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
+          version: '~> v2'
           distribution: goreleaser
           args: release --clean
         env:
