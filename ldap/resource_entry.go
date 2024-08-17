@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-ldap/ldap/v3"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -162,6 +163,10 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 
 	ldapEntry, err := cl.ReadEntryByDN(dn, "("+dummyFilter+")", attributes)
 	if err != nil {
+		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
+			d.SetId("")
+			return nil
+		}
 		return diag.FromErr(err)
 	}
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
