@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -36,6 +35,9 @@ func resourceLDAPEntry() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				DiffSuppressFunc: func(k, oldValue, newValue string, d *schema.ResourceData) bool {
+					if d.Id() == "" {
+						return false
+					}
 					var oldLdapEntry client.LdapEntry
 					json.Unmarshal([]byte(oldValue), &oldLdapEntry.Entry)
 					var newLdapEntry client.LdapEntry
@@ -143,8 +145,9 @@ func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interf
 
 func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
+	//	return diag.Errorf("should not read")
 
-	id := d.Id()
+	dn := d.Get(attributeNameDn).(string)
 
 	var attributes *[]string
 	{
@@ -157,29 +160,20 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 		attributes = client.GetAttributeNames(&ldapEntry)
 	}
 
-	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", attributes)
+	ldapEntry, err := cl.ReadEntryByDN(dn, "("+dummyFilter+")", attributes)
 	if err != nil {
-		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
-			d.SetId("")
-			return nil
-		}
 		return diag.FromErr(err)
 	}
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
-	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, id)
+	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, dn)
 	if ignoreRDNAttributes != nil {
 		*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
 	}
 	client.IgnoreAndBase64encodeAttributes(ldapEntry, ignoreAndBase64Encode)
 
-	err = d.Set(attributeNameDn, id)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
 	jsonData, err := json.Marshal(ldapEntry.Entry)
 	if err != nil {
-		return diag.Errorf("error marshaling JSON for %q: %s", id, err)
+		return diag.Errorf("error marshaling JSON for %q: %s", dn, err)
 	}
 
 	err = d.Set(attributeNameDataJson, string(jsonData))
@@ -213,9 +207,6 @@ func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m inte
 	}
 
 	d.SetId(dn)
-
-	//return diag.FromErr(errors.New("test"))
-	//time.Sleep(120 * time.Second)
 
 	return resourceLDAPEntryRead(ctx, d, m)
 }
