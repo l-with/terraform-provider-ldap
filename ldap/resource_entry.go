@@ -28,7 +28,7 @@ func resourceLDAPEntry() *schema.Resource {
 			attributeNameDn: {
 				Description: "DN of the LDAP entry",
 				Type:        schema.TypeString,
-				ForceNew:    true,
+				ForceNew:    false,
 				Required:    true,
 			},
 			attributeNameDataJson: {
