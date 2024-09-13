@@ -146,22 +146,9 @@ func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interf
 
 func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	cl := m.(*client.Client)
-	//	return diag.Errorf("should not read")
 
-	dn := d.Get(attributeNameDn).(string)
-
-	var attributes *[]string
-	{
-		var ldapEntry client.LdapEntry
-		dataJson := d.Get(attributeNameDataJson)
-		err := json.Unmarshal([]byte(dataJson.(string)), &ldapEntry.Entry)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		attributes = client.GetAttributeNames(&ldapEntry)
-	}
-
-	ldapEntry, err := cl.ReadEntryByDN(dn, "("+dummyFilter+")", attributes)
+	id := d.Id()
+	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", &[]string{"*"})
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
 			d.SetId("")
@@ -169,6 +156,8 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 		}
 		return diag.FromErr(err)
 	}
+	dn := id
+	d.Set(attributeNameDn, dn)
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
 	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, dn)
 	if ignoreRDNAttributes != nil {
