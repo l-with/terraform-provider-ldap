@@ -4,7 +4,7 @@ go 1.22.0
 toolchain go1.23.2
 
 require (
-	github.com/go-ldap/ldap/v3 v3.4.9
+	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/hashicorp/terraform-plugin-docs v0.20.1
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.35.0
@@ -73,7 +73,7 @@ require (
 	go.abhg.dev/goldmark/frontmatter v0.2.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
