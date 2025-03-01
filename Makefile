@@ -3,7 +3,7 @@ HOSTNAME=registry.terraform.io
 NAMESPACE=l-with
 NAME=ldap
 BINARY=terraform-provider-${NAME}
-VERSION?=0.10.1
+VERSION?=9.9.9
 OS_ARCH?=darwin_arm64
 
 default: install
