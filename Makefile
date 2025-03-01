@@ -3,8 +3,8 @@ HOSTNAME=registry.terraform.io
 NAMESPACE=l-with
 NAME=ldap
 BINARY=terraform-provider-${NAME}
-VERSION=9.9.9
-OS_ARCH=darwin_arm64
+VERSION?=0.10.1
+OS_ARCH?=darwin_arm64
 
 default: install
 
@@ -27,8 +27,8 @@ release:
 	GOOS=windows GOARCH=amd64 go build -o ./bin/${BINARY}_${VERSION}_windows_amd64
 
 install: build
-	mkdir -p ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}
-	mv ${BINARY} ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}
+	mkdir -p ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
+	mv ${BINARY} ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
 test:
 	go test -i $(TEST) || exit 1
@@ -36,3 +36,9 @@ test:
 
 testacc:
 	TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout 120m
+
+docs:
+	tfplugindocs generate
+
+.PHONY: test docs
+
