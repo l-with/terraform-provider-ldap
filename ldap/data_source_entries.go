@@ -2,13 +2,12 @@ package ldap
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/l-with/terraform-provider-ldap/client"
-	"github.com/hashicorp/go-cty/cty"
 )
 
 const attributeNameEntries = "entries"
@@ -77,22 +76,11 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNamePagingSize: {
-				Description: "Desired page size for the search request. Use -1 to retrieve all results without pagination, or a value greater than 0 to enable paginated queries. Defaults to 100.",
+				Description: "Desired page size for the search request. Use 0 to retrieve all results without pagination, or a value greater than 0 to enable paginated queries. Defaults to 0.",
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     100,
-				ValidateDiagFunc: func(val interface{}, path cty.Path) diag.Diagnostics {
-					var diags diag.Diagnostics
-					v := val.(int)
-					if v != -1 && v <= 0 {
-						diags = append(diags, diag.Diagnostic{
-							Severity: diag.Error,
-							Summary:  "Invalid paging size value",
-							Detail:   fmt.Sprintf("Value must be -1 or greater than 0, got: %d", v),
-						})
-					}
-					return diags
-				},
+				Default:     0,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
 			},
 		},
 	}

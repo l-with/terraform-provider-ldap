@@ -69,8 +69,8 @@ func (c *Client) ReadEntriesByFilter(
 	)
 
 	var searchResult *ldap.SearchResult
-	if pagingSize == -1 {
-		// Use Search for no limit (-1) paging size
+	if pagingSize == 0 {
+		// Use Search for no limit paging size
 		searchResult, err = c.Conn.Search(req)
 		if err != nil {
 			return nil, err
@@ -83,7 +83,7 @@ func (c *Client) ReadEntriesByFilter(
 			return nil, err
 		}
 	} else {
-		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("paging size must be -1 or greater than 0, got: %d", pagingSize))
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("paging size must be equal or greater than 0, got: %d", pagingSize))
 	}
 
 	ldapEntries = new([]LdapEntry)
