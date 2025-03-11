@@ -31,11 +31,11 @@ func (c *Client) ReadEntryByFilter(
 	}
 
 	if len(searchResult.Entries) == 0 {
-		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The filter '%s' doesn't match any entry in the OU: %s", filter, baseDn))
+		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("the filter '%s' doesn't match any entry in the OU: %s", filter, baseDn))
 	}
 
 	if len(searchResult.Entries) > 1 {
-		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The filter '%s' match more than one entry in the OU: %s", filter, baseDn))
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("the filter '%s' match more than one entry in the OU: %s", filter, baseDn))
 	}
 
 	ldapEntry = new(LdapEntry)
@@ -54,6 +54,7 @@ func (c *Client) ReadEntriesByFilter(
 	baseDn string,
 	filter string,
 	attributes *[]string,
+	pagingSize int,
 ) (ldapEntries *[]LdapEntry, err error) {
 	req := ldap.NewSearchRequest(
 		baseDn,
@@ -67,9 +68,22 @@ func (c *Client) ReadEntriesByFilter(
 		[]ldap.Control{},
 	)
 
-	searchResult, err := c.Conn.Search(req)
-	if err != nil {
-		return nil, err
+	var searchResult *ldap.SearchResult
+	if pagingSize == 0 {
+		// Use Search for no limit paging size
+		searchResult, err = c.Conn.Search(req)
+		if err != nil {
+			return nil, err
+		}
+
+	} else if pagingSize > 0 {
+		// Use SearchWithPaging with positive paging size
+		searchResult, err = c.Conn.SearchWithPaging(req, uint32(pagingSize))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("paging size must be equal or greater than 0, got: %d", pagingSize))
 	}
 
 	ldapEntries = new([]LdapEntry)
@@ -111,11 +125,11 @@ func (c *Client) ReadEntryByDN(
 	}
 
 	if len(searchResult.Entries) == 0 {
-		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("The dn '%s' doesn't match any entry", dn))
+		return nil, ldap.NewError(ldap.LDAPResultNoSuchObject, fmt.Errorf("the dn '%s' doesn't match any entry", dn))
 	}
 
 	if len(searchResult.Entries) > 1 {
-		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("The dn '%s' matches more than one entry", dn))
+		return nil, ldap.NewError(ldap.LDAPResultOther, fmt.Errorf("the dn '%s' matches more than one entry", dn))
 	}
 
 	ldapEntry = new(LdapEntry)

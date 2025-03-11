@@ -35,6 +35,7 @@ data "ldap_entries" "does" {
 - `base64encode_attributes` (List of String) list of attributes to be encoded to base64
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
+- `paging_size` (Number) Desired page size for the search request. Use 0 to retrieve all results without pagination, or a value greater than 0 to enable paginated queries. Defaults to 0.
 - `restrict_attributes` (List of String) list of attributes to which reading from the LDAP server is restricted
 
 ### Read-Only

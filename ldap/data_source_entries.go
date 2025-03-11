@@ -6,6 +6,7 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
@@ -74,6 +75,13 @@ func dataSourceLDAPEntries() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNamePagingSize: {
+				Description: "Desired page size for the search request. Use 0 to retrieve all results without pagination, or a value greater than 0 to enable paginated queries. Defaults to 0.",
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Default:     0,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
+			},
 		},
 	}
 }
@@ -83,6 +91,7 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 
 	ou := d.Get(attributeNameOu).(string)
 	filter := d.Get(attributeNameFilter).(string)
+	pagingSize := d.Get(attributeNamePagingSize).(int)
 
 	var ok bool
 	restrictAttributes := &[]string{"*"}
@@ -93,7 +102,7 @@ func dataSourceLDAPEntriesRead(_ context.Context, d *schema.ResourceData, m inte
 
 	restrictAttributes = getAttributeListFromAttribute(d, attributeNameRestrictAttributes)
 
-	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", restrictAttributes)
+	ldapEntries, err := cl.ReadEntriesByFilter(ou, "("+filter+")", restrictAttributes, pagingSize)
 	if err != nil {
 		if err.(*ldap.Error).ResultCode != ldap.LDAPResultNoSuchObject {
 			return diag.FromErr(err)
