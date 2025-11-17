@@ -58,6 +58,7 @@ resource "ldap_entry" "user_example" {
 - `case_sensitive_attribute_names` (List of String) list of attributes with case-sensitive names
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore
+- `restrict_attributes` (List of String) list of attributes to which operating is restricted. Defaults to `*`, which means 'all user attributes'. It can also contain operational attributes.
 
 ### Read-Only
 
