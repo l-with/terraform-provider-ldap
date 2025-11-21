@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"testing"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/l-with/terraform-provider-ldap/client"
-	"testing"
 )
 
 func TestAccResourceLdapEntry(t *testing.T) {
@@ -86,6 +88,32 @@ func TestAccResourceLdapEntry(t *testing.T) {
 					),
 				),
 			},
+			{
+				Config:      testAccResourceEntryRestrictAttributes(),
+				ExpectError: regexp.MustCompile(".*ldap_entry.user_jimmit will be updated in-place.*"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("ldap_entry.user_bobmit", "restrict_attributes.#", "2"),
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.user_bobmit",
+						"data_json",
+						func(value string) error {
+							var ldapEntry client.LdapEntry
+							err := json.Unmarshal([]byte(value), &ldapEntry.Entry)
+							if err != nil {
+								return err
+							}
+							entryGroups, memberOfInEntry := ldapEntry.Entry["memberOf"]
+							if !memberOfInEntry {
+								return errors.New("memberOf: it is expected to be present in the resource, but it is not")
+							}
+							if !(entryGroups[0] == "cn=all,ou=groups,dc=example,dc=com") {
+								return errors.New("memberOf: expected 'cn=all,ou=groups,dc=example,dc=com', got '" + entryGroups[0] + "'")
+							}
+							return nil
+						},
+					),
+				),
+			},
 		},
 	})
 }
@@ -147,6 +175,66 @@ resource "ldap_entry" "user_jimmit" {
     sn          = [ldap_entry.users_example_com.id]
     cn          = ["Jim Mit"]
     street      = ["Street"]
+  })
+}
+`)
+}
+
+func testAccResourceEntryRestrictAttributes() string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "users_example_com" {
+  dn = "ou=users,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "groups_example_com" {
+  dn = "ou=groups,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "group_all" {
+  dn = "cn=all,${ldap_entry.groups_example_com.dn}"
+  data_json = jsonencode({
+    objectClass = ["groupOfNames"]
+	member = [
+	  "cn=placeholder,${ldap_entry.users_example_com.dn}",
+	]
+  })
+}
+
+resource "ldap_entry" "user_jimmit" {
+  dn = "uid=jimmit01,${ldap_entry.users_example_com.dn}"
+  data_json = jsonencode({
+    objectClass  = ["inetOrgPerson"]
+    ou           = ["users"]
+    givenName    = ["Jim"]
+    sn           = [ldap_entry.users_example_com.id]
+    cn           = ["Jim Mit"]
+	userPassword = ["userPassword"]
+    street       = ["Street"]
+	memberOf     = ["${ldap_entry.group_all.dn}"]
+  })
+}
+
+resource "ldap_entry" "user_bobmit" {
+  dn = "uid=bobmit01,${ldap_entry.users_example_com.dn}"
+  restrict_attributes = [
+    "*",
+    "memberOf"
+  ]
+  data_json = jsonencode({
+    objectClass  = ["inetOrgPerson"]
+    ou           = ["users"]
+    givenName    = ["Bob"]
+    sn           = [ldap_entry.users_example_com.id]
+    cn           = ["Bob Mit"]
+	userPassword = ["userPassword"]
+    street       = ["Street"]
+	memberOf     = ["${ldap_entry.group_all.dn}"]
   })
 }
 `)

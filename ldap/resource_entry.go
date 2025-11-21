@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-ldap/ldap/v3"
 	"strings"
+
+	"github.com/go-ldap/ldap/v3"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -136,6 +137,12 @@ func resourceLDAPEntry() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNameRestrictAttributes: {
+				Description: "list of attributes to which operating is restricted. Defaults to '*', which means 'all user attributes'. It can also contain operational attributes.",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
@@ -148,7 +155,16 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 	cl := m.(*client.Client)
 
 	id := d.Id()
-	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", &[]string{"*"})
+
+	var ok bool
+
+	restrictAttributes := &[]string{"*"}
+	_, ok = d.GetOk(attributeNameRestrictAttributes)
+	if ok {
+		restrictAttributes = getAttributeListFromAttribute(d, attributeNameRestrictAttributes)
+	}
+
+	ldapEntry, err := cl.ReadEntryByDN(id, "("+dummyFilter+")", restrictAttributes)
 	if err != nil {
 		if err.(*ldap.Error).ResultCode == ldap.LDAPResultNoSuchObject {
 			d.SetId("")
