@@ -1,0 +1,22 @@
+version: '2'
+services:
+  # Samba AD Lightweight Directory Services
+  # Used for testing recursive_delete feature (Tree Delete Control)
+  # Documentation: https://hub.docker.com/r/smblds/smblds
+  #
+  # NOTE: On Windows with Podman/WSL, you may need to run a real
+  # Active Directory or Samba AD on Linux for the tests to work.
+  # The LDAP channel binding in Samba can cause connection issues
+  # when accessed through Podman's network bridge.
+  samba-ad:
+    image: smblds/smblds:latest
+    environment:
+      REALM: "EXAMPLE.COM"
+      DOMAIN: "EXAMPLE"
+      ADMINPASS: "Passw0rd"
+      INSECURE_LDAP: "true"
+    ports:
+      - "3389:389"
+      - "3636:636"
+    expose:
+      - "389"
