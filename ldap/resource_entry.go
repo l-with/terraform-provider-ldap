@@ -45,6 +45,11 @@ func resourceLDAPEntry() *schema.Resource {
 					var newLdapEntry client.LdapEntry
 					json.Unmarshal([]byte(newValue), &newLdapEntry.Entry)
 
+					// Apply ignore attributes to both old and new entries
+					ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
+					client.IgnoreAttributes(&oldLdapEntry, ignoreAndBase64Encode)
+					client.IgnoreAttributes(&newLdapEntry, ignoreAndBase64Encode)
+
 					attributeNamesCaseSensitive := EntryAttributeNamesCaseSensitive
 					if !attributeNamesCaseSensitive {
 						caseSensitiveAttributeList := new([]string)
@@ -147,7 +152,11 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
-func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
+func resourceLDAPEntryImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	diags := resourceLDAPEntryRead(ctx, d, m)
+	if diags.HasError() {
+		return nil, fmt.Errorf("failed to read LDAP entry during import: %s", diags[0].Summary)
+	}
 	return []*schema.ResourceData{d}, nil
 }
 
