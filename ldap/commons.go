@@ -11,5 +11,6 @@ const attributeNameDn = "dn"
 const attributeNameOu = "ou"
 const attributeNameCaseSensitiveAttibuteNames = "case_sensitive_attribute_names"
 const attributeNamePagingSize = "paging_size"
+const attributeNameRecursiveDelete = "recursive_delete"
 
 const dummyFilter = "objectClass=*"
