@@ -203,8 +203,18 @@ func (c *Client) UpdateEntry(
 	return nil
 }
 
-func (c *Client) DeleteEntry(dn string) error {
-	deleteRequest := ldap.NewDelRequest(dn, []ldap.Control{})
+func (c *Client) DeleteEntry(dn string, recursive bool) error {
+	var controls []ldap.Control
+	if recursive {
+		// Use LDAP Tree Delete Control (OID 1.2.840.113556.1.4.805) for recursive deletion
+		// This is required for deleting AD objects that have child objects
+		// Parameters: controlType, criticality (true = fail if not supported), controlValue (empty for this control)
+		log.Printf("[INFO] DeleteEntry: Using recursive delete (Tree Delete Control) for DN: %s", dn)
+		controls = append(controls, ldap.NewControlString(ldap.ControlTypeSubtreeDelete, true, ""))
+	} else {
+		log.Printf("[INFO] DeleteEntry: Using standard delete for DN: %s", dn)
+	}
+	deleteRequest := ldap.NewDelRequest(dn, controls)
 	err := c.Conn.Del(deleteRequest)
 	if err != nil {
 		return err

@@ -4,12 +4,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/l-with/terraform-provider-ldap/client"
 )
+
+// isSambaAD returns true if LDAP_SAMBA environment variable is set to "true".
+// This indicates tests are running against Samba AD which supports the
+// Tree Delete Control (OID 1.2.840.113556.1.4.805).
+func isSambaAD() bool {
+	return os.Getenv("LDAP_SAMBA") == "true"
+}
 
 func TestAccResourceLdapEntry(t *testing.T) {
 	resource.UnitTest(t, resource.TestCase{
@@ -238,4 +246,108 @@ resource "ldap_entry" "user_bobmit" {
   })
 }
 `)
+}
+
+// TestAccResourceLdapEntryRecursiveDelete tests the recursive_delete attribute
+// with nested entries. This requires an AD-compatible server (Samba AD) that supports
+// the Tree Delete Control (OID 1.2.840.113556.1.4.805).
+//
+// The test creates a 3-level hierarchy (parent OU -> child OU -> grandchild entry)
+// with recursive_delete=true on the parent. When Terraform destroys the parent,
+// all children are deleted atomically using the Tree Delete Control.
+//
+// To run this test:
+//
+//	export LDAP_SAMBA=true
+//	# ... set other LDAP_* variables for Samba AD ...
+//	go test -v ./ldap -run TestAccResourceLdapEntryRecursiveDelete
+func TestAccResourceLdapEntryRecursiveDelete(t *testing.T) {
+	if !isSambaAD() {
+		t.Skip("Skipping recursive delete test: requires Samba AD (LDAP_SAMBA=true)")
+	}
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccResourceEntryRecursiveDeleteWithChildren(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("ldap_entry.parent_ou", "dn", "ou=recursive_test,dc=example,dc=com"),
+					resource.TestCheckResourceAttr("ldap_entry.parent_ou", "recursive_delete", "true"),
+					resource.TestCheckResourceAttr("ldap_entry.child_ou", "dn", "ou=child,ou=recursive_test,dc=example,dc=com"),
+					resource.TestCheckResourceAttr("ldap_entry.grandchild_entry", "dn", "cn=grandchild,ou=child,ou=recursive_test,dc=example,dc=com"),
+				),
+			},
+		},
+	})
+}
+
+// testAccResourceEntryRecursiveDeleteWithChildren creates a 3-level hierarchy
+// to test the Tree Delete Control. The parent OU has recursive_delete=true,
+// so when Terraform destroys it, all children are deleted atomically.
+//
+// Note: ignore_attribute_patterns is required because Samba AD returns many
+// operational attributes (distinguishedName, objectGUID, whenCreated, etc.)
+// that are not in the configuration and would cause perpetual plan drift.
+func testAccResourceEntryRecursiveDeleteWithChildren() string {
+	return `
+resource "ldap_entry" "parent_ou" {
+  dn = "ou=recursive_test,dc=example,dc=com"
+  recursive_delete = true
+  ignore_attribute_patterns = [
+    "^distinguishedName$",
+    "^instanceType$",
+    "^name$",
+    "^objectCategory$",
+    "^objectGUID$",
+    "^uSNChanged$",
+    "^uSNCreated$",
+    "^whenChanged$",
+    "^whenCreated$",
+    "^showInAdvancedViewOnly$",
+  ]
+  data_json = jsonencode({
+    objectClass = ["top", "organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "child_ou" {
+  dn = "ou=child,${ldap_entry.parent_ou.dn}"
+  ignore_attribute_patterns = [
+    "^distinguishedName$",
+    "^instanceType$",
+    "^name$",
+    "^objectCategory$",
+    "^objectGUID$",
+    "^uSNChanged$",
+    "^uSNCreated$",
+    "^whenChanged$",
+    "^whenCreated$",
+    "^showInAdvancedViewOnly$",
+  ]
+  data_json = jsonencode({
+    objectClass = ["top", "organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "grandchild_entry" {
+  dn = "cn=grandchild,${ldap_entry.child_ou.dn}"
+  ignore_attribute_patterns = [
+    "^distinguishedName$",
+    "^instanceType$",
+    "^name$",
+    "^objectCategory$",
+    "^objectGUID$",
+    "^uSNChanged$",
+    "^uSNCreated$",
+    "^whenChanged$",
+    "^whenCreated$",
+    "^showInAdvancedViewOnly$",
+  ]
+  data_json = jsonencode({
+    objectClass = ["top", "container"]
+  })
+}
+`
 }

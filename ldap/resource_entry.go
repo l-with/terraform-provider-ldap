@@ -143,6 +143,12 @@ func resourceLDAPEntry() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNameRecursiveDelete: {
+				Description: "Enable recursive deletion using LDAP Tree Delete Control (OID 1.2.840.113556.1.4.805). Required for deleting Active Directory objects that have child objects (e.g., computer accounts after domain join).",
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+			},
 		},
 	}
 }
@@ -294,8 +300,11 @@ func resourceLDAPEntryDelete(ctx context.Context, d *schema.ResourceData, m inte
 	cl := m.(*client.Client)
 
 	dn := d.Get(attributeNameDn).(string)
+	recursiveDelete := d.Get(attributeNameRecursiveDelete).(bool)
 
-	err := cl.DeleteEntry(dn)
+	tflog.Info(ctx, fmt.Sprintf("Deleting LDAP entry: dn=%s, recursive_delete=%v", dn, recursiveDelete))
+
+	err := cl.DeleteEntry(dn, recursiveDelete)
 	if err != nil {
 		return diag.FromErr(err)
 	}
