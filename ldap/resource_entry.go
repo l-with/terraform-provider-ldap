@@ -143,6 +143,18 @@ func resourceLDAPEntry() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNameDataJsonCreateDefaults: {
+				Description: "JSON-encoded attribute values (same shape as data_json: attribute name -> list of values) injected on Create if the attribute is absent from data_json. Keys are also treated as ignore_attributes on Read and Update, so the attribute is never surfaced to state nor modified after initial creation. Intended for fields owned by an external system (e.g. a userPassword reset by Keycloak after the entry is created).",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: func(value interface{}, k string) (ws []string, errs []error) {
+					decoded := make(map[string][]string)
+					if err := json.Unmarshal([]byte(value.(string)), &decoded); err != nil {
+						errs = append(errs, err)
+					}
+					return nil, errs
+				},
+			},
 		},
 	}
 }
@@ -175,6 +187,7 @@ func resourceLDAPEntryRead(ctx context.Context, d *schema.ResourceData, m interf
 	dn := id
 	d.Set(attributeNameDn, dn)
 	ignoreAndBase64Encode := getIgnoreAndBase64encode(d)
+	appendCreateDefaultKeysToIgnore(ignoreAndBase64Encode, d)
 	ignoreRDNAttributes := client.GetRDNAttributes(ldapEntry, dn)
 	if ignoreRDNAttributes != nil {
 		*ignoreAndBase64Encode.IgnoreAttributes = append(*ignoreAndBase64Encode.IgnoreAttributes, *ignoreRDNAttributes...)
@@ -209,6 +222,11 @@ func resourceLDAPEntryCreate(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.FromErr(err)
 	}
 	client.IgnoreAndBase64decodeAttributes(&ldapEntry, ignoreAndBase64Encode)
+	for key, values := range getCreateDefaults(d) {
+		if _, present := ldapEntry.Entry[key]; !present {
+			ldapEntry.Entry[key] = values
+		}
+	}
 	ldapEntry.Dn = dn
 
 	err = cl.CreateEntry(&ldapEntry)
@@ -227,7 +245,9 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 	dn := d.Get(attributeNameDn).(string)
 
 	newIgnoreAndBase64Encode := getIgnoreAndBase64encode(d)
+	appendCreateDefaultKeysToIgnore(newIgnoreAndBase64Encode, d)
 	oldIgnoreAndBas64Encode := getOldIgnoreAndBase64encode(d)
+	appendOldCreateDefaultKeysToIgnore(oldIgnoreAndBas64Encode, d)
 	var err error
 	if d.HasChanges(attributeNameDataJson) {
 		oldDataJson, newDataJson := d.GetChange(attributeNameDataJson)

@@ -180,6 +180,120 @@ resource "ldap_entry" "user_jimmit" {
 `)
 }
 
+func TestAccResourceLdapEntryCreateDefaults(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccResourceEntryCreateDefaults("Street"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.user_defaults",
+						"data_json_create_defaults",
+						func(value string) error {
+							decoded := map[string][]string{}
+							if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+								return err
+							}
+							vals, present := decoded["userPassword"]
+							if !present || len(vals) == 0 || vals[0] != "{SSHA}creation-dummy" {
+								return fmt.Errorf("data_json_create_defaults: expected userPassword=[\"{SSHA}creation-dummy\"], got %v", decoded)
+							}
+							return nil
+						},
+					),
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.user_defaults",
+						"data_json",
+						func(value string) error {
+							var e client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &e.Entry); err != nil {
+								return err
+							}
+							if _, present := e.Entry["userPassword"]; present {
+								return errors.New("userPassword: expected to be stripped from resource data_json via data_json_create_defaults, got '" + e.Entry["userPassword"][0] + "'")
+							}
+							return nil
+						},
+					),
+					resource.TestCheckResourceAttrWith(
+						"data.ldap_entry.user_defaults",
+						"data_json",
+						func(value string) error {
+							var e client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &e.Entry); err != nil {
+								return err
+							}
+							vals, present := e.Entry["userPassword"]
+							if !present {
+								return errors.New("userPassword: expected to be present on the LDAP server (injected by data_json_create_defaults), but data.ldap_entry did not return it")
+							}
+							if len(vals) == 0 || vals[0] != "{SSHA}creation-dummy" {
+								return fmt.Errorf("userPassword: expected '{SSHA}creation-dummy' on server, got %v", vals)
+							}
+							return nil
+						},
+					),
+				),
+			},
+			{
+				Config: testAccResourceEntryCreateDefaults("NewStreet"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.user_defaults",
+						"data_json",
+						func(value string) error {
+							var e client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &e.Entry); err != nil {
+								return err
+							}
+							if len(e.Entry["street"]) == 0 || e.Entry["street"][0] != "NewStreet" {
+								return fmt.Errorf("street: expected 'NewStreet' after update, got %v", e.Entry["street"])
+							}
+							if _, present := e.Entry["userPassword"]; present {
+								return errors.New("userPassword: leaked into resource data_json after unrelated-attribute update")
+							}
+							return nil
+						},
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccResourceEntryCreateDefaults(street string) string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "users_example_com" {
+  dn = "ou=users,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "user_defaults" {
+  dn = "uid=defaults01,${ldap_entry.users_example_com.dn}"
+  data_json_create_defaults = jsonencode({
+    userPassword = ["{SSHA}creation-dummy"]
+  })
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["users"]
+    givenName   = ["Default"]
+    sn          = [ldap_entry.users_example_com.id]
+    cn          = ["Default User"]
+    street      = ["%s"]
+  })
+}
+
+data "ldap_entry" "user_defaults" {
+  depends_on = [ldap_entry.user_defaults]
+  dn         = ldap_entry.user_defaults.dn
+}
+`, street)
+}
+
 func testAccResourceEntryRestrictAttributes() string {
 	return fmt.Sprintf(`
 resource "ldap_entry" "users_example_com" {
