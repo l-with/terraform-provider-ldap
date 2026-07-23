@@ -353,3 +353,175 @@ resource "ldap_entry" "user_bobmit" {
 }
 `)
 }
+
+func TestAccResourceLdapEntryIgnoreAttributesOnUpdate(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create entry with all attributes including
+				// description and street (which will be ignored later).
+				Config: testAccEntryBeforeIgnore(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.test_user",
+						"data_json",
+						func(value string) error {
+							var entry client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &entry.Entry); err != nil {
+								return err
+							}
+							if _, ok := entry.Entry["description"]; !ok {
+								return errors.New("description: expected to be present before ignore")
+							}
+							if _, ok := entry.Entry["street"]; !ok {
+								return errors.New("street: expected to be present before ignore")
+							}
+							return nil
+						},
+					),
+				),
+			},
+			{
+				// Step 2: Add ignore_attributes for description and street,
+				// remove them from data_json, and change cn. The
+				// CustomizeDiff must carry the ignored attributes forward so
+				// they are NOT deleted from LDAP. The cn change must still
+				// be applied.
+				Config: testAccEntryAfterIgnoreWithChange(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrWith(
+						"ldap_entry.test_user",
+						"data_json",
+						func(value string) error {
+							var entry client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &entry.Entry); err != nil {
+								return err
+							}
+							if entry.Entry["cn"][0] != "Jim Updated" {
+								return fmt.Errorf("cn: expected 'Jim Updated', got '%s'", entry.Entry["cn"][0])
+							}
+							if _, ok := entry.Entry["description"]; ok {
+								return errors.New("description: expected to be ignored in state after update")
+							}
+							if _, ok := entry.Entry["street"]; ok {
+								return errors.New("street: expected to be ignored in state after update")
+							}
+							return nil
+						},
+					),
+				),
+			},
+			{
+				// Step 3: Verify the ignored attributes still exist in LDAP
+				// by reading them back via a data source (no ignore filter).
+				Config: testAccEntryAfterIgnoreWithVerify(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrWith(
+						"data.ldap_entry.test_user_verify",
+						"data_json",
+						func(value string) error {
+							var entry client.LdapEntry
+							if err := json.Unmarshal([]byte(value), &entry.Entry); err != nil {
+								return err
+							}
+							if _, ok := entry.Entry["description"]; !ok {
+								return errors.New("description: expected to still exist in LDAP after ignore")
+							}
+							if _, ok := entry.Entry["street"]; !ok {
+								return errors.New("street: expected to still exist in LDAP after ignore")
+							}
+							if entry.Entry["cn"][0] != "Jim Updated" {
+								return fmt.Errorf("cn: expected 'Jim Updated', got '%s'", entry.Entry["cn"][0])
+							}
+							return nil
+						},
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccEntryBeforeIgnore() string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "test_ou" {
+  dn = "ou=test_ignore,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "test_user" {
+  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["test_ignore"]
+    givenName   = ["Jim"]
+    sn          = ["Mit"]
+    cn          = ["Jim Mit"]
+    description = ["Test user"]
+    street      = ["Hauptstr. 1"]
+  })
+}
+`)
+}
+
+func testAccEntryAfterIgnoreWithChange() string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "test_ou" {
+  dn = "ou=test_ignore,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "test_user" {
+  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  ignore_attributes = [
+    "description",
+    "street",
+  ]
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["test_ignore"]
+    givenName   = ["Jim"]
+    sn          = ["Mit"]
+    cn          = ["Jim Updated"]
+  })
+}
+`)
+}
+
+func testAccEntryAfterIgnoreWithVerify() string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "test_ou" {
+  dn = "ou=test_ignore,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "test_user" {
+  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  ignore_attributes = [
+    "description",
+    "street",
+  ]
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    ou          = ["test_ignore"]
+    givenName   = ["Jim"]
+    sn          = ["Mit"]
+    cn          = ["Jim Updated"]
+  })
+}
+
+data "ldap_entry" "test_user_verify" {
+  depends_on = [ldap_entry.test_user]
+  ou         = ldap_entry.test_ou.dn
+  filter     = "uid=testignore01"
+}
+`)
+}

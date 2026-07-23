@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
@@ -25,6 +27,8 @@ func resourceLDAPEntry() *schema.Resource {
 			StateContext: resourceLDAPEntryImport,
 		},
 
+		CustomizeDiff: customizeDiffIgnoreAttributes,
+
 		Schema: map[string]*schema.Schema{
 			attributeNameDn: {
 				Description: "DN of the LDAP entry",
@@ -35,7 +39,8 @@ func resourceLDAPEntry() *schema.Resource {
 			attributeNameDataJson: {
 				Description: "JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
+				Computed:    true,
 				DiffSuppressFunc: func(k, oldValue, newValue string, d *schema.ResourceData) bool {
 					if d.Id() == "" {
 						return false
@@ -159,6 +164,83 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
+// customizeDiffIgnoreAttributes ensures that attributes listed in
+// ignore_attributes are carried over from the prior state into the planned
+// new data_json value. This prevents spurious deletions after plan-time
+// imports where the Read could not apply ignore_attributes (because the
+// config values are not yet in state at that point).
+func customizeDiffIgnoreAttributes(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if !d.HasChange(attributeNameDataJson) {
+		return nil
+	}
+
+	// Collect ignore_attributes from the planned config.
+	ignoreRaw := d.Get(attributeNameIgnoreAttributes).([]interface{})
+	patternsRaw := d.Get(attributeNameIgnoreAttributePatterns).([]interface{})
+	if len(ignoreRaw) == 0 && len(patternsRaw) == 0 {
+		return nil
+	}
+	ignoreAttrs := toStringSlice(ignoreRaw)
+	ignorePatterns := toStringSlice(patternsRaw)
+
+	oldRaw, newRaw := d.GetChange(attributeNameDataJson)
+	if oldRaw.(string) == "" || newRaw.(string) == "" {
+		return nil
+	}
+
+	var oldEntry map[string][]string
+	if err := json.Unmarshal([]byte(oldRaw.(string)), &oldEntry); err != nil {
+		return nil
+	}
+	var newEntry map[string][]string
+	if err := json.Unmarshal([]byte(newRaw.(string)), &newEntry); err != nil {
+		return nil
+	}
+
+	// Copy ignored attributes from old state into the planned new value
+	// so they are not marked for deletion.
+	changed := false
+	for attr, val := range oldEntry {
+		if _, exists := newEntry[attr]; exists {
+			continue
+		}
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			newEntry[attr] = val
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+
+	newJson, err := json.Marshal(newEntry)
+	if err != nil {
+		return nil
+	}
+	return d.SetNew(attributeNameDataJson, string(newJson))
+}
+
+func toStringSlice(raw []interface{}) []string {
+	out := make([]string, len(raw))
+	for i, v := range raw {
+		out[i] = v.(string)
+	}
+	return out
+}
+
+func isIgnoredAttribute(attr string, ignoreAttrs []string, ignorePatterns []string) bool {
+	if slices.ContainsFunc(ignoreAttrs, func(ignored string) bool {
+		return strings.EqualFold(attr, ignored)
+	}) {
+		return true
+	}
+	return slices.ContainsFunc(ignorePatterns, func(pattern string) bool {
+		matched, _ := regexp.MatchString(pattern, attr)
+		return matched
+	})
+}
+
 func resourceLDAPEntryImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
 	return []*schema.ResourceData{d}, nil
 }
@@ -265,6 +347,10 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 		if err != nil {
 			return diag.FromErr(err)
 		}
+		// Also apply the NEW ignore list to the old entry so that newly
+		// ignored attributes (present in old state but absent in new config)
+		// are not included in the deleted set.
+		client.IgnoreAttributes(&ldapEntryOld, newIgnoreAndBase64Encode)
 		err = client.IgnoreAndBase64decodeAttributes(&ldapEntryNew, newIgnoreAndBase64Encode)
 		if err != nil {
 			return diag.FromErr(err)
