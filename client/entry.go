@@ -177,7 +177,7 @@ func (c *Client) UpdateEntry(
 	}
 	for _, attributeName := range addedAttributeNameSet.List() {
 		modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
-			Operation: ldap.AddAttribute,
+			Operation: ldap.ReplaceAttribute,
 			Modification: ldap.PartialAttribute{
 				Type: attributeName.(string),
 				Vals: ldapEntry.Entry[attributeName.(string)],
