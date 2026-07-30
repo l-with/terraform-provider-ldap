@@ -48,7 +48,6 @@ resource "ldap_entry" "user_example" {
 
 ### Required
 
-- `data_json` (String) JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)
 - `dn` (String) DN of the LDAP entry
 
 ### Optional
@@ -56,6 +55,7 @@ resource "ldap_entry" "user_example" {
 - `base64encode_attribute_patterns` (List of String) list of attribute patterns for base64 encoded attributes
 - `base64encode_attributes` (List of String) list of base64 encoded attributes
 - `case_sensitive_attribute_names` (List of String) list of attributes with case-sensitive names
+- `data_json` (String) JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute). This attribute is Optional and Computed (rather than Required) so that ignored attributes can be carried over from prior state during planning.
 - `data_json_create_defaults` (String) JSON-encoded attribute values (same shape as data_json: attribute name -> list of values) injected on Create if the attribute is absent from data_json. Keys are also treated as ignore_attributes on Read and Update, so the attribute is never surfaced to state nor modified after initial creation. Intended for fields owned by an external system (e.g. a userPassword reset by Keycloak after the entry is created).
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
 - `ignore_attributes` (List of String) list of attributes to ignore

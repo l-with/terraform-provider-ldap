@@ -37,7 +37,7 @@ func resourceLDAPEntry() *schema.Resource {
 				Required:    true,
 			},
 			attributeNameDataJson: {
-				Description: "JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute)",
+				Description: "JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute). This attribute is Optional and Computed (rather than Required) so that ignored attributes can be carried over from prior state during planning.",
 				Type:        schema.TypeString,
 				// Optional+Computed (instead of Required) is needed so customizeDiffIgnoreAttributes
 				// can carry ignored attributes forward via SetNew, which only works on computed keys.
