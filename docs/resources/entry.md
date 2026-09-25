@@ -22,6 +22,12 @@ By now this only supports single valued RDNs (s. https://github.com/l-with/terra
 In the example below the LDAP attribute `uid` is ignored on read because `uid=jimmit01` is the RDN 
 and the attribute `uid` with the value `jimmit01` is added implicitely by the LDAP server (although not part of `data_json`).
 
+## Ignored Attributes
+
+Attributes listed in `ignore_attributes` or matching `ignore_attribute_patterns` are neither read from nor written to LDAP, not even on Create.
+Values for ignored attributes in `data_json` therefore have no effect: they are not written, do not cause a perpetual diff, and a warning is issued.
+Use `data_json_create_defaults` to set an attribute only on creation and ignore it afterwards.
+
 ## Example Usage
 ```terraform
 resource "ldap_entry" "users_example_com" {
@@ -57,8 +63,8 @@ resource "ldap_entry" "user_example" {
 - `case_sensitive_attribute_names` (List of String) list of attributes with case-sensitive names
 - `data_json` (String) JSON-encoded string with the values of the attributes of the entry (s. https://pkg.go.dev/github.com/go-ldap/ldap/v3#EntryAttribute). This attribute is Optional and Computed (rather than Required) so that ignored attributes can be carried over from prior state during planning.
 - `data_json_create_defaults` (String) JSON-encoded attribute values (same shape as data_json: attribute name -> list of values) injected on Create if the attribute is absent from data_json. Keys are also treated as ignore_attributes on Read and Update, so the attribute is never surfaced to state nor modified after initial creation. Intended for fields owned by an external system (e.g. a userPassword reset by Keycloak after the entry is created).
-- `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore
-- `ignore_attributes` (List of String) list of attributes to ignore
+- `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.
+- `ignore_attributes` (List of String) list of attributes to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.
 - `restrict_attributes` (List of String) list of attributes to which operating is restricted. Defaults to '*', which means 'all user attributes'. It can also contain operational attributes.
 
 ### Read-Only

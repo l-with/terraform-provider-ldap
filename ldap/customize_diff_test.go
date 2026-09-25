@@ -1,8 +1,14 @@
 package ldap
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func TestIsIgnoredAttribute(t *testing.T) {
@@ -81,12 +87,12 @@ func TestCustomizeDiffIgnoreAttributes(t *testing.T) {
 		{
 			name: "ignored attributes carried over from old",
 			oldDataJson: toJSON(map[string][]string{
-				"objectClass":   {"olcGlobal"},
-				"olcLogLevel":   {"none"},
-				"olcArgsFile":   {"/var/run/slapd/slapd.args"},
-				"olcPidFile":    {"/var/run/slapd/slapd.pid"},
-				"olcServerID":   {"1 ldaps://host1"},
-				"cn":            {"config"},
+				"objectClass": {"olcGlobal"},
+				"olcLogLevel": {"none"},
+				"olcArgsFile": {"/var/run/slapd/slapd.args"},
+				"olcPidFile":  {"/var/run/slapd/slapd.pid"},
+				"olcServerID": {"1 ldaps://host1"},
+				"cn":          {"config"},
 			}),
 			newDataJson: toJSON(map[string][]string{
 				"objectClass":  {"olcGlobal"},
@@ -142,6 +148,38 @@ func TestCustomizeDiffIgnoreAttributes(t *testing.T) {
 			ignoreAttrs: []string{"olcArgsFile"},
 			wantChanged: false, // olcArgsFile exists in new already, no copy needed
 		},
+		{
+			name: "ignored attribute only in new is dropped",
+			oldDataJson: toJSON(map[string][]string{
+				"objectClass": {"group"},
+				"cn":          {"Parent"},
+			}),
+			newDataJson: toJSON(map[string][]string{
+				"objectClass": {"group"},
+				"cn":          {"Parent"},
+				"member":      {"CN=Child,OU=Groups,DC=example,DC=com"},
+			}),
+			ignoreAttrs: []string{"member"},
+			wantChanged: true,
+			wantAttrs:   []string{"objectClass", "cn"},
+			wantMissing: []string{"member"},
+		},
+		{
+			name: "pattern-based ignore only in new is dropped",
+			oldDataJson: toJSON(map[string][]string{
+				"objectClass": {"olcGlobal"},
+				"olcLogLevel": {"none"},
+			}),
+			newDataJson: toJSON(map[string][]string{
+				"objectClass":           {"olcGlobal"},
+				"olcLogLevel":           {"256"},
+				"olcTLSCertificateFile": {"/etc/ldap/cert.pem"},
+			}),
+			ignorePatterns: []string{"^olcTLS.*"},
+			wantChanged:    true,
+			wantAttrs:      []string{"objectClass", "olcLogLevel"},
+			wantMissing:    []string{"olcTLSCertificateFile"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -180,8 +218,8 @@ func TestCustomizeDiffIgnoreAttributes(t *testing.T) {
 	}
 }
 
-// applyIgnoreAttributesLogic is the extracted core logic of
-// customizeDiffIgnoreAttributes, testable without a full ResourceDiff.
+// applyIgnoreAttributesLogic mirrors customizeDiffIgnoreAttributes around
+// alignIgnoredAttributes, testable without a full ResourceDiff.
 // Returns the modified newDataJson or "" if no change was needed.
 func applyIgnoreAttributesLogic(oldDataJson, newDataJson string, ignoreAttrs, ignorePatterns []string) string {
 	if len(ignoreAttrs) == 0 && len(ignorePatterns) == 0 {
@@ -200,16 +238,7 @@ func applyIgnoreAttributesLogic(oldDataJson, newDataJson string, ignoreAttrs, ig
 		return ""
 	}
 
-	changed := false
-	for attr, val := range oldEntry {
-		if _, exists := newEntry[attr]; exists {
-			continue
-		}
-		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
-			newEntry[attr] = val
-			changed = true
-		}
-	}
+	changed := alignIgnoredAttributes(oldEntry, newEntry, ignoreAttrs, ignorePatterns)
 
 	if !changed {
 		return ""
@@ -225,4 +254,102 @@ func applyIgnoreAttributesLogic(oldDataJson, newDataJson string, ignoreAttrs, ig
 func toJSON(m map[string][]string) string {
 	b, _ := json.Marshal(m)
 	return string(b)
+}
+
+func TestValidateIgnoredAttributesNotInDataJson(t *testing.T) {
+	stringList := func(values ...string) cty.Value {
+		if len(values) == 0 {
+			return cty.NullVal(cty.List(cty.String))
+		}
+		vals := make([]cty.Value, len(values))
+		for i, v := range values {
+			vals[i] = cty.StringVal(v)
+		}
+		return cty.ListVal(vals)
+	}
+	config := func(dataJson cty.Value, ignoreAttrs, ignorePatterns cty.Value) cty.Value {
+		return cty.ObjectVal(map[string]cty.Value{
+			attributeNameDataJson:                dataJson,
+			attributeNameIgnoreAttributes:        ignoreAttrs,
+			attributeNameIgnoreAttributePatterns: ignorePatterns,
+		})
+	}
+	dataJson := cty.StringVal(toJSON(map[string][]string{
+		"objectClass":           {"group"},
+		"member":                {"CN=Child,OU=Groups,DC=example,DC=com"},
+		"olcTLSCertificateFile": {"/etc/ldap/cert.pem"},
+	}))
+
+	tests := []struct {
+		name      string
+		rawConfig cty.Value
+		wantAttrs []string // attributes expected in the warning, nil for no warning
+	}{
+		{
+			// https://github.com/l-with/terraform-provider-ldap/issues/162
+			name:      "ignored attribute in data_json",
+			rawConfig: config(dataJson, stringList("member"), stringList()),
+			wantAttrs: []string{"member"},
+		},
+		{
+			name:      "pattern-based ignored attribute in data_json",
+			rawConfig: config(dataJson, stringList(), stringList("^olcTLS.*")),
+			wantAttrs: []string{"olcTLSCertificateFile"},
+		},
+		{
+			name:      "case insensitive match",
+			rawConfig: config(dataJson, stringList("MEMBER"), stringList()),
+			wantAttrs: []string{"member"},
+		},
+		{
+			name:      "ignored attribute not in data_json",
+			rawConfig: config(dataJson, stringList("userPassword"), stringList()),
+		},
+		{
+			name:      "no ignore attributes",
+			rawConfig: config(dataJson, stringList(), stringList()),
+		},
+		{
+			name:      "unknown data_json",
+			rawConfig: config(cty.UnknownVal(cty.String), stringList("member"), stringList()),
+		},
+		{
+			name: "unknown ignore attribute element",
+			rawConfig: config(
+				dataJson,
+				cty.ListVal([]cty.Value{cty.UnknownVal(cty.String), cty.StringVal("member")}),
+				stringList(),
+			),
+			wantAttrs: []string{"member"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &schema.ValidateResourceConfigFuncResponse{}
+			validateIgnoredAttributesNotInDataJson(
+				context.Background(),
+				schema.ValidateResourceConfigFuncRequest{RawConfig: tt.rawConfig},
+				resp,
+			)
+			if tt.wantAttrs == nil {
+				if len(resp.Diagnostics) != 0 {
+					t.Fatalf("expected no diagnostics, got %v", resp.Diagnostics)
+				}
+				return
+			}
+			if len(resp.Diagnostics) != 1 {
+				t.Fatalf("expected 1 diagnostic, got %v", resp.Diagnostics)
+			}
+			d := resp.Diagnostics[0]
+			if d.Severity != diag.Warning {
+				t.Errorf("expected warning, got severity %v", d.Severity)
+			}
+			for _, attr := range tt.wantAttrs {
+				if !strings.Contains(d.Detail, attr) {
+					t.Errorf("expected %q in warning detail, got %q", attr, d.Detail)
+				}
+			}
+		})
+	}
 }

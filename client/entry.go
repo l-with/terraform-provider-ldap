@@ -194,6 +194,10 @@ func (c *Client) UpdateEntry(
 		})
 	}
 
+	if len(modifyRequest.Changes) == 0 {
+		return nil
+	}
+
 	err := c.Conn.Modify(modifyRequest)
 	if err != nil {
 		log.Printf("[ERROR] UpdateEntry - error modifying LDAP object '%q' with values %v", ldapEntry.Dn, err)

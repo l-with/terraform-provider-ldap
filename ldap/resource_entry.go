@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -28,6 +29,10 @@ func resourceLDAPEntry() *schema.Resource {
 		},
 
 		CustomizeDiff: customizeDiffIgnoreAttributes,
+
+		ValidateRawResourceConfigFuncs: []schema.ValidateRawResourceConfigFunc{
+			validateIgnoredAttributesNotInDataJson,
+		},
 
 		Schema: map[string]*schema.Schema{
 			attributeNameDn: {
@@ -115,13 +120,13 @@ func resourceLDAPEntry() *schema.Resource {
 				},
 			},
 			attributeNameIgnoreAttributes: {
-				Description: "list of attributes to ignore",
+				Description: "list of attributes to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNameIgnoreAttributePatterns: {
-				Description: "list of attribute patterns to ignore",
+				Description: "list of attribute patterns to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -166,11 +171,16 @@ func resourceLDAPEntry() *schema.Resource {
 	}
 }
 
-// customizeDiffIgnoreAttributes ensures that attributes listed in
-// ignore_attributes are carried over from the prior state into the planned
-// new data_json value. This prevents spurious deletions after plan-time
-// imports where the Read could not apply ignore_attributes (because the
-// config values are not yet in state at that point).
+// customizeDiffIgnoreAttributes makes the planned data_json value agree with
+// the prior state for all attributes listed in ignore_attributes (or matching
+// ignore_attribute_patterns):
+//   - ignored attributes present in the prior state are carried over into the
+//     planned value. This prevents spurious deletions after plan-time imports
+//     where the Read could not apply ignore_attributes (because the config
+//     values are not yet in state at that point).
+//   - ignored attributes absent from the prior state but present in the config
+//     are removed from the planned value. They are never written to LDAP, so
+//     keeping them would produce a perpetual diff (s. issue #162).
 func customizeDiffIgnoreAttributes(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
 	if !d.HasChange(attributeNameDataJson) {
 		return nil
@@ -199,18 +209,7 @@ func customizeDiffIgnoreAttributes(_ context.Context, d *schema.ResourceDiff, _ 
 		return nil
 	}
 
-	// Copy ignored attributes from old state into the planned new value
-	// so they are not marked for deletion.
-	changed := false
-	for attr, val := range oldEntry {
-		if _, exists := newEntry[attr]; exists {
-			continue
-		}
-		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
-			newEntry[attr] = val
-			changed = true
-		}
-	}
+	changed := alignIgnoredAttributes(oldEntry, newEntry, ignoreAttrs, ignorePatterns)
 
 	if !changed {
 		return nil
@@ -221,6 +220,94 @@ func customizeDiffIgnoreAttributes(_ context.Context, d *schema.ResourceDiff, _ 
 		return nil
 	}
 	return d.SetNew(attributeNameDataJson, string(newJson))
+}
+
+// alignIgnoredAttributes makes newEntry agree with oldEntry for all ignored
+// attributes and reports whether newEntry was modified.
+func alignIgnoredAttributes(oldEntry, newEntry map[string][]string, ignoreAttrs, ignorePatterns []string) bool {
+	changed := false
+	// Copy ignored attributes from old state into the planned new value
+	// so they are not marked for deletion.
+	for attr, val := range oldEntry {
+		if _, exists := newEntry[attr]; exists {
+			continue
+		}
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			newEntry[attr] = val
+			changed = true
+		}
+	}
+	// Drop ignored attributes that are only present in the config, they are
+	// never written to LDAP.
+	for attr := range newEntry {
+		if _, exists := oldEntry[attr]; exists {
+			continue
+		}
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			delete(newEntry, attr)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// validateIgnoredAttributesNotInDataJson warns about attributes in data_json
+// that are listed in ignore_attributes (or match ignore_attribute_patterns).
+// Ignored attributes are neither read nor written, so their values in
+// data_json have no effect.
+func validateIgnoredAttributesNotInDataJson(_ context.Context, req schema.ValidateResourceConfigFuncRequest, resp *schema.ValidateResourceConfigFuncResponse) {
+	if !req.RawConfig.IsKnown() || req.RawConfig.IsNull() {
+		return
+	}
+	dataJson := req.RawConfig.GetAttr(attributeNameDataJson)
+	if !dataJson.IsKnown() || dataJson.IsNull() {
+		return
+	}
+	ignoreAttrs := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributes))
+	ignorePatterns := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributePatterns))
+	if len(ignoreAttrs) == 0 && len(ignorePatterns) == 0 {
+		return
+	}
+
+	var entry map[string][]string
+	if err := json.Unmarshal([]byte(dataJson.AsString()), &entry); err != nil {
+		return
+	}
+	var ignoredAttrs []string
+	for attr := range entry {
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			ignoredAttrs = append(ignoredAttrs, attr)
+		}
+	}
+	if len(ignoredAttrs) == 0 {
+		return
+	}
+	slices.Sort(ignoredAttrs)
+	resp.Diagnostics = append(resp.Diagnostics, diag.Diagnostic{
+		Severity: diag.Warning,
+		Summary:  "Ignored attributes in data_json",
+		Detail: fmt.Sprintf(
+			"The attributes %s are present in data_json but are ignored by ignore_attributes or ignore_attribute_patterns. Ignored attributes are neither read from nor written to LDAP, so their values in data_json have no effect. Remove them from data_json, or use data_json_create_defaults to set them only on creation.",
+			strings.Join(ignoredAttrs, ", "),
+		),
+		AttributePath: cty.GetAttrPath(attributeNameDataJson),
+	})
+}
+
+// knownStrings returns the known, non-null string elements of a list value.
+func knownStrings(list cty.Value) []string {
+	if !list.IsKnown() || list.IsNull() || !list.CanIterateElements() {
+		return nil
+	}
+	var out []string
+	for it := list.ElementIterator(); it.Next(); {
+		_, v := it.Element()
+		if !v.IsKnown() || v.IsNull() || v.Type() != cty.String {
+			continue
+		}
+		out = append(out, v.AsString())
+	}
+	return out
 }
 
 func toStringSlice(raw []interface{}) []string {

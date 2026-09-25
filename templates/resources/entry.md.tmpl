@@ -22,6 +22,12 @@ By now this only supports single valued RDNs (s. https://github.com/l-with/terra
 In the example below the LDAP attribute `uid` is ignored on read because `uid=jimmit01` is the RDN 
 and the attribute `uid` with the value `jimmit01` is added implicitely by the LDAP server (although not part of `data_json`).
 
+## Ignored Attributes
+
+Attributes listed in `ignore_attributes` or matching `ignore_attribute_patterns` are neither read from nor written to LDAP, not even on Create.
+Values for ignored attributes in `data_json` therefore have no effect: they are not written, do not cause a perpetual diff, and a warning is issued.
+Use `data_json_create_defaults` to set an attribute only on creation and ignore it afterwards.
+
 ## Example Usage
 {{ tffile (printf "examples/resources/%s/resource.tf" .Name)}}
 
