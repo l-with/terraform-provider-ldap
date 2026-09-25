@@ -2,10 +2,9 @@ package client
 
 import (
 	"fmt"
-	"log"
-
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"log"
 )
 
 func (c *Client) ReadEntryByFilter(
