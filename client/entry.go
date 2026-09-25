@@ -2,9 +2,10 @@ package client
 
 import (
 	"fmt"
+	"log"
+
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"log"
 )
 
 func (c *Client) ReadEntryByFilter(
@@ -192,6 +193,10 @@ func (c *Client) UpdateEntry(
 				Vals: ldapEntry.Entry[attributeName.(string)],
 			},
 		})
+	}
+
+	if len(modifyRequest.Changes) == 0 {
+		return nil
 	}
 
 	err := c.Conn.Modify(modifyRequest)
