@@ -525,3 +525,43 @@ data "ldap_entry" "test_user_verify" {
 }
 `)
 }
+
+func TestAccResourceLdapEntryIgnoredAttributeInDataJson(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEntryIgnoredAttributeInDataJson(),
+			},
+			{
+				Config:   testAccEntryIgnoredAttributeInDataJson(),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+func testAccEntryIgnoredAttributeInDataJson() string {
+	return fmt.Sprintf(`
+resource "ldap_entry" "test_ou" {
+  dn = "ou=test_ignore162,dc=example,dc=com"
+  data_json = jsonencode({
+    objectClass = ["organizationalUnit"]
+  })
+}
+
+resource "ldap_entry" "test_user" {
+  dn = "uid=testignore162,${ldap_entry.test_ou.dn}"
+  ignore_attributes = [
+    "description",
+  ]
+  data_json = jsonencode({
+    objectClass = ["inetOrgPerson"]
+    sn          = ["Mit"]
+    cn          = ["Jim Mit"]
+    description = ["ignored but present in data_json"]
+  })
+}
+`)
+}
