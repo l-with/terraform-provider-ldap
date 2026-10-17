@@ -5,6 +5,7 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
+	"sort"
 )
 
 func (c *Client) ReadEntryByFilter(
@@ -160,11 +161,46 @@ func (c *Client) CreateEntry(
 	return nil
 }
 
+// AttributeValueChanges are the values to delete from and to add to an
+// attribute updated per value.
+type AttributeValueChanges struct {
+	Deleted []string
+	Added   []string
+}
+
 func (c *Client) UpdateEntry(
 	ldapEntry *LdapEntry,
 	deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet *schema.Set,
+	perValueChanges map[string]AttributeValueChanges,
 ) error {
 	modifyRequest := ldap.NewModifyRequest(ldapEntry.Dn, []ldap.Control{})
+
+	perValueAttributeNames := make([]string, 0, len(perValueChanges))
+	for attributeName := range perValueChanges {
+		perValueAttributeNames = append(perValueAttributeNames, attributeName)
+	}
+	sort.Strings(perValueAttributeNames)
+	for _, attributeName := range perValueAttributeNames {
+		changes := perValueChanges[attributeName]
+		if len(changes.Deleted) > 0 {
+			modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
+				Operation: ldap.DeleteAttribute,
+				Modification: ldap.PartialAttribute{
+					Type: attributeName,
+					Vals: changes.Deleted,
+				},
+			})
+		}
+		if len(changes.Added) > 0 {
+			modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{
+				Operation: ldap.AddAttribute,
+				Modification: ldap.PartialAttribute{
+					Type: attributeName,
+					Vals: changes.Added,
+				},
+			})
+		}
+	}
 
 	for _, attributeName := range deletedAttributeNameSet.List() {
 		modifyRequest.Changes = append(modifyRequest.Changes, ldap.Change{

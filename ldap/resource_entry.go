@@ -32,6 +32,7 @@ func resourceLDAPEntry() *schema.Resource {
 
 		ValidateRawResourceConfigFuncs: []schema.ValidateRawResourceConfigFunc{
 			validateIgnoredAttributesNotInDataJson,
+			validatePerValueUpdateAttributesNotIgnored,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -102,6 +103,9 @@ func resourceLDAPEntry() *schema.Resource {
 							}
 						}
 					}
+					perValueUpdateAttributes := toStringSlice(d.Get(attributeNamePerValueUpdateAttributes).([]interface{}))
+					lowerAttributeValues(&oldLdapEntry, perValueUpdateAttributes)
+					lowerAttributeValues(&newLdapEntry, perValueUpdateAttributes)
 					client.SortLdapEntryValues(&oldLdapEntry)
 					client.SortLdapEntryValues(&newLdapEntry)
 					oldJsonData, _ := json.Marshal(oldLdapEntry.Entry)
@@ -151,6 +155,12 @@ func resourceLDAPEntry() *schema.Resource {
 			},
 			attributeNameRestrictAttributes: {
 				Description: "list of attributes to which operating is restricted. Defaults to '*', which means 'all user attributes'. It can also contain operational attributes.",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			attributeNamePerValueUpdateAttributes: {
+				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group). Values of these attributes are compared case-insensitively, like the LDAP server compares e.g. DNs. Attributes which are also ignored by ignore_attributes or ignore_attribute_patterns are never updated and cause a warning.",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -294,6 +304,44 @@ func validateIgnoredAttributesNotInDataJson(_ context.Context, req schema.Valida
 	})
 }
 
+// validatePerValueUpdateAttributesNotIgnored warns about attributes in
+// per_value_update_attributes that are listed in ignore_attributes (or match
+// ignore_attribute_patterns). Ignored attributes are never updated, so
+// listing them in per_value_update_attributes has no effect.
+func validatePerValueUpdateAttributesNotIgnored(_ context.Context, req schema.ValidateResourceConfigFuncRequest, resp *schema.ValidateResourceConfigFuncResponse) {
+	if !req.RawConfig.IsKnown() || req.RawConfig.IsNull() {
+		return
+	}
+	perValueUpdateAttrs := knownStrings(req.RawConfig.GetAttr(attributeNamePerValueUpdateAttributes))
+	if len(perValueUpdateAttrs) == 0 {
+		return
+	}
+	ignoreAttrs := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributes))
+	ignorePatterns := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributePatterns))
+	if len(ignoreAttrs) == 0 && len(ignorePatterns) == 0 {
+		return
+	}
+
+	var ignoredAttrs []string
+	for _, attr := range perValueUpdateAttrs {
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			ignoredAttrs = append(ignoredAttrs, attr)
+		}
+	}
+	if len(ignoredAttrs) == 0 {
+		return
+	}
+	resp.Diagnostics = append(resp.Diagnostics, diag.Diagnostic{
+		Severity: diag.Warning,
+		Summary:  "Ignored attributes in per_value_update_attributes",
+		Detail: fmt.Sprintf(
+			"The attributes %s are listed in per_value_update_attributes but are ignored by ignore_attributes or ignore_attribute_patterns. Ignored attributes are never updated, so listing them in per_value_update_attributes has no effect. Remove them from one of the lists.",
+			strings.Join(ignoredAttrs, ", "),
+		),
+		AttributePath: cty.GetAttrPath(attributeNamePerValueUpdateAttributes),
+	})
+}
+
 // knownStrings returns the known, non-null string elements of a list value.
 func knownStrings(list cty.Value) []string {
 	if !list.IsKnown() || list.IsNull() || !list.CanIterateElements() {
@@ -316,6 +364,89 @@ func toStringSlice(raw []interface{}) []string {
 		out[i] = v.(string)
 	}
 	return out
+}
+
+// perValueChanges returns the values of an attribute updated per value to
+// delete (only in oldValues) and to add (only in newValues). Values are
+// compared case-insensitively, like the LDAP server compares e.g. DNs.
+func perValueChanges(oldValues, newValues []string) client.AttributeValueChanges {
+	var changes client.AttributeValueChanges
+	for _, oldValue := range oldValues {
+		if !containsFold(newValues, oldValue) {
+			changes.Deleted = append(changes.Deleted, oldValue)
+		}
+	}
+	for _, newValue := range newValues {
+		if !containsFold(oldValues, newValue) {
+			changes.Added = append(changes.Added, newValue)
+		}
+	}
+	return changes
+}
+
+// filterPerValueChanges restricts the changes of attributes updated per value
+// to the current values on the LDAP server: only values not present yet are
+// added and only values still present are deleted. Values added or deleted
+// concurrently outside of Terraform thus do not let the update fail, which
+// the server would reject otherwise.
+func filterPerValueChanges(cl *client.Client, dn string, changesByAttribute map[string]client.AttributeValueChanges) error {
+	var attributes []string
+	for attributeName, changes := range changesByAttribute {
+		if len(changes.Deleted) > 0 || len(changes.Added) > 0 {
+			attributes = append(attributes, attributeName)
+		}
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	currentEntry, err := cl.ReadEntryByDN(dn, "("+dummyFilter+")", &attributes)
+	if err != nil {
+		return err
+	}
+	for _, attributeName := range attributes {
+		var currentValues []string
+		for currentAttributeName, values := range currentEntry.Entry {
+			if strings.EqualFold(currentAttributeName, attributeName) {
+				currentValues = values
+			}
+		}
+		changes := changesByAttribute[attributeName]
+		var filteredChanges client.AttributeValueChanges
+		for _, value := range changes.Deleted {
+			if containsFold(currentValues, value) {
+				filteredChanges.Deleted = append(filteredChanges.Deleted, value)
+			}
+		}
+		for _, value := range changes.Added {
+			if !containsFold(currentValues, value) {
+				filteredChanges.Added = append(filteredChanges.Added, value)
+			}
+		}
+		changesByAttribute[attributeName] = filteredChanges
+	}
+	return nil
+}
+
+// lowerAttributeValues lower cases the values of the given attributes, to
+// compare them case-insensitively.
+func lowerAttributeValues(ldapEntry *client.LdapEntry, attributes []string) {
+	for attributeName, values := range ldapEntry.Entry {
+		if !containsFold(attributes, attributeName) {
+			continue
+		}
+		lowerValues := make([]string, len(values))
+		for i, value := range values {
+			lowerValues[i] = strings.ToLower(value)
+		}
+		ldapEntry.Entry[attributeName] = lowerValues
+	}
+}
+
+// containsFold reports whether s is in list, compared case-insensitively.
+func containsFold(list []string, s string) bool {
+	return slices.ContainsFunc(list, func(element string) bool {
+		return strings.EqualFold(element, s)
+	})
 }
 
 func isIgnoredAttribute(attr string, ignoreAttrs []string, ignorePatterns []string) bool {
@@ -476,7 +607,29 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 				changedAttributeNameSet.Add(attributeName)
 			}
 		}
-		err = cl.UpdateEntry(&ldapEntryNew, deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet)
+
+		// Attributes updated per value are removed from the attribute name
+		// sets, only their deleted and added values are modified.
+		perValueUpdateAttributes := toStringSlice(d.Get(attributeNamePerValueUpdateAttributes).([]interface{}))
+		perValueChangesByAttribute := map[string]client.AttributeValueChanges{}
+		for _, attributeNameSet := range []*schema.Set{deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet} {
+			for _, attributeName := range attributeNameSet.List() {
+				if !containsFold(perValueUpdateAttributes, attributeName.(string)) {
+					continue
+				}
+				perValueChangesByAttribute[attributeName.(string)] = perValueChanges(
+					ldapEntryOld.Entry[attributeName.(string)],
+					ldapEntryNew.Entry[attributeName.(string)],
+				)
+				attributeNameSet.Remove(attributeName)
+			}
+		}
+		err = filterPerValueChanges(cl, dn, perValueChangesByAttribute)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+
+		err = cl.UpdateEntry(&ldapEntryNew, deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet, perValueChangesByAttribute)
 		if err != nil {
 			return diag.FromErr(err)
 		}

@@ -1,14 +1,19 @@
 package ldap
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/go-ldap/ldap/v3"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/l-with/terraform-provider-ldap/client"
 )
 
@@ -583,4 +588,285 @@ resource "ldap_entry" "test_user" {
   })
 }
 `)
+}
+
+// TestAccResourceLdapEntryPerValueUpdateConcurrentChange shows why
+// per_value_update_attributes is needed
+// (s. https://github.com/l-with/terraform-provider-ldap/issues/164):
+// a member is added outside of Terraform after the plan, right before the
+// update of the group. The plan only removes another member, but replacing
+// all values of member also deletes the concurrently added one, which the
+// plan never showed. Updating per value only deletes the removed member.
+func TestAccResourceLdapEntryPerValueUpdateConcurrentChange(t *testing.T) {
+	groupDn := "cn=group,ou=test_per_value,dc=example,dc=com"
+	memberOne := testAccPerValueMemberDn("pervalue01", "Per Value One")
+	memberTwo := testAccPerValueMemberDn("pervalue02", "Per Value Two")
+	memberThree := testAccPerValueMemberDn("pervalue03", "Per Value Three")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactoriesConcurrentChange(groupDn, func(cl *client.Client) error {
+			modifyRequest := ldap.NewModifyRequest(groupDn, nil)
+			modifyRequest.Add("member", []string{memberThree})
+			return cl.Conn.Modify(modifyRequest)
+		}),
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create the group with two members.
+				Config: testAccEntryPerValueUpdate(memberOne, memberTwo),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberTwo}),
+				),
+			},
+			{
+				// Step 2: Remove the second member, while the third member is
+				// added concurrently before the update. The concurrently
+				// added member must not be deleted by this apply. The next
+				// plan shows its removal, since it is not in the configuration.
+				Config:             testAccEntryPerValueUpdate(memberOne),
+				ExpectNonEmptyPlan: true,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberThree}),
+				),
+			},
+		},
+	})
+}
+
+// TestAccResourceLdapEntryPerValueUpdateConcurrentAdd tests a value of
+// per_value_update_attributes added by the configuration and concurrently
+// outside of Terraform before the update. The value is already there, so the
+// update must succeed, although the server rejects adding an existing value.
+func TestAccResourceLdapEntryPerValueUpdateConcurrentAdd(t *testing.T) {
+	groupDn := "cn=group,ou=test_per_value,dc=example,dc=com"
+	memberOne := testAccPerValueMemberDn("pervalue01", "Per Value One")
+	memberThree := testAccPerValueMemberDn("pervalue03", "Per Value Three")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactoriesConcurrentChange(groupDn, func(cl *client.Client) error {
+			modifyRequest := ldap.NewModifyRequest(groupDn, nil)
+			modifyRequest.Add("member", []string{memberThree})
+			return cl.Conn.Modify(modifyRequest)
+		}),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEntryPerValueUpdate(memberOne),
+			},
+			{
+				// The third member is added by the configuration and
+				// concurrently before the update.
+				Config: testAccEntryPerValueUpdate(memberOne, memberThree),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberThree}),
+				),
+			},
+		},
+	})
+}
+
+// TestAccResourceLdapEntryPerValueUpdateConcurrentDelete tests a value of
+// per_value_update_attributes removed by the configuration and concurrently
+// deleted outside of Terraform before the update. The value is already gone,
+// so the update must succeed, although the server rejects deleting a missing
+// value.
+func TestAccResourceLdapEntryPerValueUpdateConcurrentDelete(t *testing.T) {
+	groupDn := "cn=group,ou=test_per_value,dc=example,dc=com"
+	memberOne := testAccPerValueMemberDn("pervalue01", "Per Value One")
+	memberTwo := testAccPerValueMemberDn("pervalue02", "Per Value Two")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactoriesConcurrentChange(groupDn, func(cl *client.Client) error {
+			modifyRequest := ldap.NewModifyRequest(groupDn, nil)
+			modifyRequest.Delete("member", []string{memberTwo})
+			return cl.Conn.Modify(modifyRequest)
+		}),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEntryPerValueUpdate(memberOne, memberTwo),
+			},
+			{
+				// The second member is removed by the configuration and
+				// concurrently deleted before the update.
+				Config: testAccEntryPerValueUpdate(memberOne),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne}),
+				),
+			},
+		},
+	})
+}
+
+// TestAccResourceLdapEntryPerValueUpdateCaseInsensitive tests that values of
+// per_value_update_attributes are compared case-insensitively, like the LDAP
+// server compares DNs: OpenLDAP returns member DNs with lower case and Samba
+// AD with upper case attribute types. The configuration uses the other case,
+// which must neither cause a perpetual diff nor a failing update.
+func TestAccResourceLdapEntryPerValueUpdateCaseInsensitive(t *testing.T) {
+	memberOne := testAccPerValueMemberDnOtherCase("pervalue01", "Per Value One")
+	memberTwo := testAccPerValueMemberDnOtherCase("pervalue02", "Per Value Two")
+	memberThree := testAccPerValueMemberDnOtherCase("pervalue03", "Per Value Three")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create the group. The post-apply plan must be
+				// empty, although the server returns the members in a
+				// different case.
+				Config: testAccEntryPerValueUpdate(memberOne, memberTwo),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberTwo}),
+				),
+			},
+			{
+				// Step 2: Replace the second member by the third one.
+				Config: testAccEntryPerValueUpdate(memberOne, memberThree),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberThree}),
+				),
+			},
+		},
+	})
+}
+
+// testAccPerValueMemberDnOtherCase returns the DN of a person in
+// ou=test_per_value in the other case than the server returns it in member
+// values (s. testAccPerValueMemberDn).
+func testAccPerValueMemberDnOtherCase(uid, cn string) string {
+	rdn := strings.SplitN(testAccPersonRDN(uid, cn), "=", 2)
+	if testLdapServer() == ldapServerSamba {
+		return rdn[0] + "=" + rdn[1] + ",ou=test_per_value,dc=example,dc=com"
+	}
+	return strings.ToUpper(rdn[0]) + "=" + rdn[1] + ",OU=test_per_value,DC=example,DC=com"
+}
+
+// testAccPerValueMemberDn returns the DN of a person in ou=test_per_value as
+// the server returns it in member values: OpenLDAP with lower case and Samba
+// AD with upper case attribute types.
+func testAccPerValueMemberDn(uid, cn string) string {
+	rdn := strings.SplitN(testAccPersonRDN(uid, cn), "=", 2)
+	if testLdapServer() == ldapServerSamba {
+		return strings.ToUpper(rdn[0]) + "=" + rdn[1] + ",OU=test_per_value,DC=example,DC=com"
+	}
+	return rdn[0] + "=" + rdn[1] + ",ou=test_per_value,dc=example,dc=com"
+}
+
+// testAccProviderFactoriesConcurrentChange returns provider factories whose
+// ldap_entry resource applies change right before updating the entry with the
+// given DN. This simulates a change outside of Terraform between plan and
+// apply.
+func testAccProviderFactoriesConcurrentChange(dn string, change func(cl *client.Client) error) map[string]func() (*schema.Provider, error) {
+	return map[string]func() (*schema.Provider, error){
+		"ldap": func() (*schema.Provider, error) {
+			provider := Provider()
+			entry := provider.ResourcesMap["ldap_entry"]
+			update := entry.UpdateContext
+			entry.UpdateContext = func(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+				if d.Id() == dn {
+					if err := change(m.(*client.Client)); err != nil {
+						return diag.FromErr(err)
+					}
+				}
+				return update(ctx, d, m)
+			}
+			return provider, nil
+		},
+	}
+}
+
+// testAccCheckDataJsonValuesEqualFold checks that the values of an attribute in
+// data_json are exactly the expected ones, ignoring order and case.
+func testAccCheckDataJsonValuesEqualFold(name string, attribute string, expected []string) resource.TestCheckFunc {
+	return resource.TestCheckResourceAttrWith(name, "data_json", func(value string) error {
+		var ldapEntry client.LdapEntry
+		if err := json.Unmarshal([]byte(value), &ldapEntry.Entry); err != nil {
+			return err
+		}
+		normalize := func(values []string) []string {
+			normalized := make([]string, len(values))
+			for i, v := range values {
+				normalized[i] = strings.ToLower(v)
+			}
+			slices.Sort(normalized)
+			return normalized
+		}
+		got := normalize(ldapEntry.Entry[attribute])
+		want := normalize(expected)
+		if !slices.Equal(got, want) {
+			return fmt.Errorf("%s: expected %v (ignoring order and case), got %v", attribute, expected, ldapEntry.Entry[attribute])
+		}
+		return nil
+	})
+}
+
+func testAccEntryPerValueUpdate(memberDns ...string) string {
+	members := make([]string, len(memberDns))
+	for i, memberDn := range memberDns {
+		members[i] = `"` + memberDn + `"`
+	}
+	return fmt.Sprintf(testAccConfig(`
+resource "ldap_entry" "test_ou" {
+  dn = "ou=test_per_value,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
+  data_json = jsonencode({
+    objectClass = %OU_OBJECT_CLASSES%
+  })
+}
+
+resource "ldap_entry" "user_one" {
+  dn = "%RDN(pervalue01,Per Value One)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
+  data_json = jsonencode({
+    objectClass = %PERSON_OBJECT_CLASSES%
+    sn          = ["One"]
+    %CN(Per Value One)%
+  })
+}
+
+resource "ldap_entry" "user_two" {
+  dn = "%RDN(pervalue02,Per Value Two)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
+  data_json = jsonencode({
+    objectClass = %PERSON_OBJECT_CLASSES%
+    sn          = ["Two"]
+    %CN(Per Value Two)%
+  })
+}
+
+resource "ldap_entry" "user_three" {
+  dn = "%RDN(pervalue03,Per Value Three)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
+  data_json = jsonencode({
+    objectClass = %PERSON_OBJECT_CLASSES%
+    sn          = ["Three"]
+    %CN(Per Value Three)%
+  })
+}
+
+resource "ldap_entry" "group" {
+  depends_on = [
+    ldap_entry.user_one,
+    ldap_entry.user_two,
+    ldap_entry.user_three,
+  ]
+  dn = "cn=group,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
+  per_value_update_attributes = [
+    "member",
+  ]
+  data_json = jsonencode({
+    objectClass = %GROUP_OBJECT_CLASSES%
+    member      = [%s]
+  })
+}
+
+data "ldap_entry" "group_verify" {
+  depends_on          = [ldap_entry.group]
+  dn                  = ldap_entry.group.dn
+  restrict_attributes = ["member"]
+}
+`), strings.Join(members, ", "))
 }
