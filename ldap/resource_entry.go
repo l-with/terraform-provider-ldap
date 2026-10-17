@@ -32,6 +32,7 @@ func resourceLDAPEntry() *schema.Resource {
 
 		ValidateRawResourceConfigFuncs: []schema.ValidateRawResourceConfigFunc{
 			validateIgnoredAttributesNotInDataJson,
+			validatePerValueUpdateAttributesNotIgnored,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -156,7 +157,7 @@ func resourceLDAPEntry() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNamePerValueUpdateAttributes: {
-				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group).",
+				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group). Attributes which are also ignored by ignore_attributes or ignore_attribute_patterns are never updated and cause a warning.",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -297,6 +298,44 @@ func validateIgnoredAttributesNotInDataJson(_ context.Context, req schema.Valida
 			strings.Join(ignoredAttrs, ", "),
 		),
 		AttributePath: cty.GetAttrPath(attributeNameDataJson),
+	})
+}
+
+// validatePerValueUpdateAttributesNotIgnored warns about attributes in
+// per_value_update_attributes that are listed in ignore_attributes (or match
+// ignore_attribute_patterns). Ignored attributes are never updated, so
+// listing them in per_value_update_attributes has no effect.
+func validatePerValueUpdateAttributesNotIgnored(_ context.Context, req schema.ValidateResourceConfigFuncRequest, resp *schema.ValidateResourceConfigFuncResponse) {
+	if !req.RawConfig.IsKnown() || req.RawConfig.IsNull() {
+		return
+	}
+	perValueUpdateAttrs := knownStrings(req.RawConfig.GetAttr(attributeNamePerValueUpdateAttributes))
+	if len(perValueUpdateAttrs) == 0 {
+		return
+	}
+	ignoreAttrs := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributes))
+	ignorePatterns := knownStrings(req.RawConfig.GetAttr(attributeNameIgnoreAttributePatterns))
+	if len(ignoreAttrs) == 0 && len(ignorePatterns) == 0 {
+		return
+	}
+
+	var ignoredAttrs []string
+	for _, attr := range perValueUpdateAttrs {
+		if isIgnoredAttribute(attr, ignoreAttrs, ignorePatterns) {
+			ignoredAttrs = append(ignoredAttrs, attr)
+		}
+	}
+	if len(ignoredAttrs) == 0 {
+		return
+	}
+	resp.Diagnostics = append(resp.Diagnostics, diag.Diagnostic{
+		Severity: diag.Warning,
+		Summary:  "Ignored attributes in per_value_update_attributes",
+		Detail: fmt.Sprintf(
+			"The attributes %s are listed in per_value_update_attributes but are ignored by ignore_attributes or ignore_attribute_patterns. Ignored attributes are never updated, so listing them in per_value_update_attributes has no effect. Remove them from one of the lists.",
+			strings.Join(ignoredAttrs, ", "),
+		),
+		AttributePath: cty.GetAttrPath(attributeNamePerValueUpdateAttributes),
 	})
 }
 
