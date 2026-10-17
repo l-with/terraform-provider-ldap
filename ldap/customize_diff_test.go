@@ -353,3 +353,99 @@ func TestValidateIgnoredAttributesNotInDataJson(t *testing.T) {
 		})
 	}
 }
+
+// TestValidatePerValueUpdateAttributesNotIgnored expects a warning for
+// attributes in per_value_update_attributes which are ignored by
+// ignore_attributes or ignore_attribute_patterns, since ignored attributes
+// are never updated. It runs all ValidateRawResourceConfigFuncs of the
+// ldap_entry resource.
+func TestValidatePerValueUpdateAttributesNotIgnored(t *testing.T) {
+	stringList := func(values ...string) cty.Value {
+		if len(values) == 0 {
+			return cty.NullVal(cty.List(cty.String))
+		}
+		vals := make([]cty.Value, len(values))
+		for i, v := range values {
+			vals[i] = cty.StringVal(v)
+		}
+		return cty.ListVal(vals)
+	}
+	config := func(perValueUpdateAttrs, ignoreAttrs, ignorePatterns cty.Value) cty.Value {
+		return cty.ObjectVal(map[string]cty.Value{
+			// data_json without the ignored attributes, so that only the
+			// conflict between the attribute lists causes a warning
+			attributeNameDataJson: cty.StringVal(toJSON(map[string][]string{
+				"objectClass": {"groupOfNames"},
+			})),
+			attributeNamePerValueUpdateAttributes: perValueUpdateAttrs,
+			attributeNameIgnoreAttributes:         ignoreAttrs,
+			attributeNameIgnoreAttributePatterns:  ignorePatterns,
+		})
+	}
+
+	tests := []struct {
+		name      string
+		rawConfig cty.Value
+		wantAttrs []string // attributes expected in the warning, nil for no warning
+	}{
+		{
+			name:      "per value update attribute ignored",
+			rawConfig: config(stringList("member"), stringList("member"), stringList()),
+			wantAttrs: []string{"member"},
+		},
+		{
+			name:      "per value update attribute ignored by pattern",
+			rawConfig: config(stringList("member"), stringList(), stringList("^mem.*")),
+			wantAttrs: []string{"member"},
+		},
+		{
+			name:      "case insensitive match",
+			rawConfig: config(stringList("member"), stringList("MEMBER"), stringList()),
+			wantAttrs: []string{"member"},
+		},
+		{
+			name:      "per value update attribute not ignored",
+			rawConfig: config(stringList("member"), stringList("userPassword"), stringList()),
+		},
+		{
+			name:      "no per value update attributes",
+			rawConfig: config(stringList(), stringList("member"), stringList()),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var diagnostics diag.Diagnostics
+			for _, validate := range resourceLDAPEntry().ValidateRawResourceConfigFuncs {
+				resp := &schema.ValidateResourceConfigFuncResponse{}
+				validate(
+					context.Background(),
+					schema.ValidateResourceConfigFuncRequest{RawConfig: tt.rawConfig},
+					resp,
+				)
+				diagnostics = append(diagnostics, resp.Diagnostics...)
+			}
+			if tt.wantAttrs == nil {
+				if len(diagnostics) != 0 {
+					t.Fatalf("expected no diagnostics, got %v", diagnostics)
+				}
+				return
+			}
+			if len(diagnostics) != 1 {
+				t.Fatalf("expected 1 diagnostic, got %v", diagnostics)
+			}
+			d := diagnostics[0]
+			if d.Severity != diag.Warning {
+				t.Errorf("expected warning, got severity %v", d.Severity)
+			}
+			if !strings.Contains(d.Detail, attributeNamePerValueUpdateAttributes) {
+				t.Errorf("expected %q in warning detail, got %q", attributeNamePerValueUpdateAttributes, d.Detail)
+			}
+			for _, attr := range tt.wantAttrs {
+				if !strings.Contains(d.Detail, attr) {
+					t.Errorf("expected %q in warning detail, got %q", attr, d.Detail)
+				}
+			}
+		})
+	}
+}
