@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/l-with/terraform-provider-ldap/client"
 	"strconv"
 	"testing"
@@ -23,18 +25,10 @@ func TestAccDataSourceLdapEntries(t *testing.T) {
 						"entries.#",
 						"2",
 					),
-					resource.TestCheckResourceAttrWith(
+					testAccCheckLdapEntriesDataJson(
 						"data.ldap_entries.mits",
-						"entries.0.data_json",
-						func(value string) error {
-							var ldapEntry client.LdapEntry
-							err := json.Unmarshal([]byte(value), &ldapEntry.Entry)
-							if err != nil {
-								return err
-							}
-							if ldapEntry.Entry["cn"][0] != "Jim Mit" {
-								return errors.New("cn: expected 'Jim Mit', got '" + ldapEntry.Entry["cn"][0] + "'")
-							}
+						"Jim Mit",
+						func(ldapEntry client.LdapEntry) error {
 							if ldapEntry.Entry["ou"][0] != "users" {
 								return errors.New("ou: expected 'users', got '" + ldapEntry.Entry["ou"][0] + "'")
 							}
@@ -90,6 +84,32 @@ func TestAccDataSourceLdapEntries(t *testing.T) {
 			},
 		},
 	})
+}
+
+// testAccCheckLdapEntriesDataJson applies check to the data_json of the entry
+// with the given cn in the entries of a ldap_entries data source. The order
+// of the entries depends on the LDAP server, so they are matched by cn.
+func testAccCheckLdapEntriesDataJson(name string, cn string, check func(ldapEntry client.LdapEntry) error) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[name]
+		if !ok {
+			return fmt.Errorf("%s: not found in state", name)
+		}
+		count, err := strconv.Atoi(rs.Primary.Attributes["entries.#"])
+		if err != nil {
+			return fmt.Errorf("%s: entries.#: %w", name, err)
+		}
+		for i := 0; i < count; i++ {
+			var ldapEntry client.LdapEntry
+			if err := json.Unmarshal([]byte(rs.Primary.Attributes[fmt.Sprintf("entries.%d.data_json", i)]), &ldapEntry.Entry); err != nil {
+				return err
+			}
+			if len(ldapEntry.Entry["cn"]) > 0 && ldapEntry.Entry["cn"][0] == cn {
+				return check(ldapEntry)
+			}
+		}
+		return fmt.Errorf("%s: no entry with cn '%s' found", name, cn)
+	}
 }
 
 func testAccDataSourceEntries() string {
