@@ -77,6 +77,7 @@ var sambaOperationalAttributes = []string{
 	"pwdLastSet",
 	"sAMAccountName",
 	"sAMAccountType",
+	"showInAdvancedViewOnly",
 	"uSNChanged",
 	"uSNCreated",
 	"userAccountControl",
@@ -92,6 +93,9 @@ var testAccConfigCNRegexp = regexp.MustCompile(`%CN\(([^)]+)\)%`)
 //
 //   - %OU_OBJECT_CLASSES%: object classes of an organizational unit
 //   - %PERSON_OBJECT_CLASSES%: object classes of an inetOrgPerson
+//   - %GROUP_OBJECT_CLASSES%: object classes of a group with member values,
+//     groupOfNames for OpenLDAP and group for Samba, where modifications
+//     of member fail for groupOfNames
 //   - %IGNORE_OPERATIONAL_ATTRIBUTES%: ignore_attribute_patterns for the
 //     attributes the server maintains itself (empty for OpenLDAP)
 //   - %RDN(uid,cn)%: RDN of a person, "uid=<uid>" for OpenLDAP and
@@ -101,12 +105,14 @@ var testAccConfigCNRegexp = regexp.MustCompile(`%CN\(([^)]+)\)%`)
 func testAccConfig(config string) string {
 	ouObjectClasses := `["organizationalUnit"]`
 	personObjectClasses := `["inetOrgPerson"]`
+	groupObjectClasses := `["groupOfNames"]`
 	ignoreOperationalAttributes := ""
 	rdn := "uid=$1"
 	cn := `cn = ["$1"]`
 	if testLdapServer() == ldapServerSamba {
 		ouObjectClasses = `["top", "organizationalUnit"]`
 		personObjectClasses = `["top", "person", "organizationalPerson", "user", "inetOrgPerson"]`
+		groupObjectClasses = `["top", "group"]`
 		ignoreOperationalAttributes = fmt.Sprintf(`ignore_attribute_patterns = ["^(%s)$"]`, strings.Join(sambaOperationalAttributes, "|"))
 		rdn = "cn=$2"
 		cn = ""
@@ -114,6 +120,7 @@ func testAccConfig(config string) string {
 	config = strings.NewReplacer(
 		"%OU_OBJECT_CLASSES%", ouObjectClasses,
 		"%PERSON_OBJECT_CLASSES%", personObjectClasses,
+		"%GROUP_OBJECT_CLASSES%", groupObjectClasses,
 		"%IGNORE_OPERATIONAL_ATTRIBUTES%", ignoreOperationalAttributes,
 	).Replace(config)
 	config = testAccConfigRDNRegexp.ReplaceAllString(config, rdn)
