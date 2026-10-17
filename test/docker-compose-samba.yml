@@ -1,0 +1,14 @@
+services:
+  # Samba (Active Directory) Lightweight Directory Services, an Active
+  # Directory compatible LDAP server for tests of AD specific behavior.
+  # Documentation: https://hub.docker.com/r/smblds/smblds
+  samba-ad:
+    environment:
+      REALM: "EXAMPLE.COM"
+      DOMAIN: "EXAMPLE"
+      ADMINPASS: "Passw0rd"
+      INSECURE_LDAP: "true"
+    image: smblds/smblds:latest
+    ports:
+      - "3389:389"
+      - "3636:636"

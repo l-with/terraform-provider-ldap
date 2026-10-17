@@ -7,5 +7,10 @@
 #
 try/*
 test/*
+!test/README.md
+!test/docker-compose.yml
+!test/docker-compose-samba.yml
+!test/ldap.env
+!test/samba.env
 install_local
 dist/

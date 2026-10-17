@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/l-with/terraform-provider-ldap/client"
 	"strconv"
@@ -19,7 +18,7 @@ func TestAccDataSourceLdapEntry(t *testing.T) {
 			{
 				Config: testAccDataSourceEntry(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("data.ldap_entry.user_jimmit", "dn", "uid=jimmit01,ou=users,dc=example,dc=com"),
+					testAccCheckResourceAttrEqualFold("data.ldap_entry.user_jimmit", "dn", testAccPersonRDN("jimmit01", "Jim Mit")+",ou=users,dc=example,dc=com"),
 					resource.TestCheckResourceAttrWith(
 						"data.ldap_entry.user_jimmit",
 						"data_json",
@@ -90,28 +89,30 @@ func TestAccDataSourceLdapEntry(t *testing.T) {
 }
 
 func testAccDataSourceEntry() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 locals {
  dn = "ou=users,dc=example,dc=com"
 }
 
 resource "ldap_entry" "users_example_com" {
   dn = "ou=users,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "user_jimmit" {
   depends_on = [ldap_entry.users_example_com]
 
-  dn = "uid=jimmit01,${local.dn}"
+  dn = "%RDN(jimmit01,Jim Mit)%,${local.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["users"]
     givenName   = ["Jim"]
     sn          = ["Mit"]
-    cn          = ["Jim Mit"]
+    %CN(Jim Mit)%
     mail        = ["jim.mit@example.com"]
   })
 }
