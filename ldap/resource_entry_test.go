@@ -633,6 +633,51 @@ func TestAccResourceLdapEntryPerValueUpdateConcurrentChange(t *testing.T) {
 	})
 }
 
+// TestAccResourceLdapEntryPerValueUpdateCaseInsensitive tests that values of
+// per_value_update_attributes are compared case-insensitively, like the LDAP
+// server compares DNs: OpenLDAP returns member DNs with lower case and Samba
+// AD with upper case attribute types. The configuration uses the other case,
+// which must neither cause a perpetual diff nor a failing update.
+func TestAccResourceLdapEntryPerValueUpdateCaseInsensitive(t *testing.T) {
+	memberOne := testAccPerValueMemberDnOtherCase("pervalue01", "Per Value One")
+	memberTwo := testAccPerValueMemberDnOtherCase("pervalue02", "Per Value Two")
+	memberThree := testAccPerValueMemberDnOtherCase("pervalue03", "Per Value Three")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create the group. The post-apply plan must be
+				// empty, although the server returns the members in a
+				// different case.
+				Config: testAccEntryPerValueUpdate(memberOne, memberTwo),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberTwo}),
+				),
+			},
+			{
+				// Step 2: Replace the second member by the third one.
+				Config: testAccEntryPerValueUpdate(memberOne, memberThree),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberThree}),
+				),
+			},
+		},
+	})
+}
+
+// testAccPerValueMemberDnOtherCase returns the DN of a person in
+// ou=test_per_value in the other case than the server returns it in member
+// values (s. testAccPerValueMemberDn).
+func testAccPerValueMemberDnOtherCase(uid, cn string) string {
+	rdn := strings.SplitN(testAccPersonRDN(uid, cn), "=", 2)
+	if testLdapServer() == ldapServerSamba {
+		return rdn[0] + "=" + rdn[1] + ",ou=test_per_value,dc=example,dc=com"
+	}
+	return strings.ToUpper(rdn[0]) + "=" + rdn[1] + ",OU=test_per_value,DC=example,DC=com"
+}
+
 // testAccPerValueMemberDn returns the DN of a person in ou=test_per_value as
 // the server returns it in member values: OpenLDAP with lower case and Samba
 // AD with upper case attribute types.

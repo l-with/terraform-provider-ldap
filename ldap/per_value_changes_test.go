@@ -47,6 +47,20 @@ func TestPerValueChanges(t *testing.T) {
 			oldValues:   []string{"cn=one", "cn=two"},
 			wantDeleted: []string{"cn=one", "cn=two"},
 		},
+		{
+			// the LDAP server compares e.g. DNs case-insensitively, so a
+			// value differing only in case is the same value
+			name:      "case changed only",
+			oldValues: []string{"cn=one,ou=groups,dc=example,dc=com"},
+			newValues: []string{"CN=one,OU=groups,DC=example,DC=com"},
+		},
+		{
+			name:        "case changed and value replaced",
+			oldValues:   []string{"cn=one", "cn=two"},
+			newValues:   []string{"CN=one", "CN=three"},
+			wantDeleted: []string{"cn=two"},
+			wantAdded:   []string{"CN=three"},
+		},
 	}
 
 	for _, tt := range tests {
