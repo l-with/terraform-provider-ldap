@@ -633,6 +633,71 @@ func TestAccResourceLdapEntryPerValueUpdateConcurrentChange(t *testing.T) {
 	})
 }
 
+// TestAccResourceLdapEntryPerValueUpdateConcurrentAdd tests a value of
+// per_value_update_attributes added by the configuration and concurrently
+// outside of Terraform before the update. The value is already there, so the
+// update must succeed, although the server rejects adding an existing value.
+func TestAccResourceLdapEntryPerValueUpdateConcurrentAdd(t *testing.T) {
+	groupDn := "cn=group,ou=test_per_value,dc=example,dc=com"
+	memberOne := testAccPerValueMemberDn("pervalue01", "Per Value One")
+	memberThree := testAccPerValueMemberDn("pervalue03", "Per Value Three")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactoriesConcurrentChange(groupDn, func(cl *client.Client) error {
+			modifyRequest := ldap.NewModifyRequest(groupDn, nil)
+			modifyRequest.Add("member", []string{memberThree})
+			return cl.Conn.Modify(modifyRequest)
+		}),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEntryPerValueUpdate(memberOne),
+			},
+			{
+				// The third member is added by the configuration and
+				// concurrently before the update.
+				Config: testAccEntryPerValueUpdate(memberOne, memberThree),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne, memberThree}),
+				),
+			},
+		},
+	})
+}
+
+// TestAccResourceLdapEntryPerValueUpdateConcurrentDelete tests a value of
+// per_value_update_attributes removed by the configuration and concurrently
+// deleted outside of Terraform before the update. The value is already gone,
+// so the update must succeed, although the server rejects deleting a missing
+// value.
+func TestAccResourceLdapEntryPerValueUpdateConcurrentDelete(t *testing.T) {
+	groupDn := "cn=group,ou=test_per_value,dc=example,dc=com"
+	memberOne := testAccPerValueMemberDn("pervalue01", "Per Value One")
+	memberTwo := testAccPerValueMemberDn("pervalue02", "Per Value Two")
+
+	resource.UnitTest(t, resource.TestCase{
+		PreCheck: func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactoriesConcurrentChange(groupDn, func(cl *client.Client) error {
+			modifyRequest := ldap.NewModifyRequest(groupDn, nil)
+			modifyRequest.Delete("member", []string{memberTwo})
+			return cl.Conn.Modify(modifyRequest)
+		}),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccEntryPerValueUpdate(memberOne, memberTwo),
+			},
+			{
+				// The second member is removed by the configuration and
+				// concurrently deleted before the update.
+				Config: testAccEntryPerValueUpdate(memberOne),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataJsonValuesEqualFold("data.ldap_entry.group_verify", "member", []string{memberOne}),
+				),
+			},
+		},
+	})
+}
+
 // TestAccResourceLdapEntryPerValueUpdateCaseInsensitive tests that values of
 // per_value_update_attributes are compared case-insensitively, like the LDAP
 // server compares DNs: OpenLDAP returns member DNs with lower case and Samba
