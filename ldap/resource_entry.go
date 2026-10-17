@@ -160,7 +160,7 @@ func resourceLDAPEntry() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			attributeNamePerValueUpdateAttributes: {
-				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group). Attributes which are also ignored by ignore_attributes or ignore_attribute_patterns are never updated and cause a warning.",
+				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group). Values of these attributes are compared case-insensitively, like the LDAP server compares e.g. DNs. Attributes which are also ignored by ignore_attributes or ignore_attribute_patterns are never updated and cause a warning.",
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},

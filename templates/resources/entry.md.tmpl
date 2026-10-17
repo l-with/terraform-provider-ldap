@@ -35,6 +35,11 @@ For attributes listed in `per_value_update_attributes` only the values removed f
 The result is the same, but values added outside of Terraform after the plan (e.g. members added to a group concurrently) are not deleted by the apply, since the plan did not show their removal.
 The next plan shows their removal, if they are not in `data_json`.
 
+Values of these attributes are compared case-insensitively, like the LDAP server compares e.g. DNs:
+OpenLDAP returns DNs in member values with lower case attribute types (`uid=jimmit01,ou=users,...`),
+Active Directory with upper case attribute types (`CN=Jim Mit,OU=users,...`).
+A value in `data_json` differing only in case therefore neither causes a diff nor an update.
+
 ```terraform
 resource "ldap_entry" "group" {
   dn = "cn=group,ou=groups,dc=example,dc=com"
