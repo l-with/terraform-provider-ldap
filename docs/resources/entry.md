@@ -34,6 +34,7 @@ By default an Update replaces all values of a changed attribute with the values 
 For attributes listed in `per_value_update_attributes` only the values removed from `data_json` are deleted and only the values added to `data_json` are added.
 The result is the same, but values added outside of Terraform after the plan (e.g. members added to a group concurrently) are not deleted by the apply, since the plan did not show their removal.
 The next plan shows their removal, if they are not in `data_json`.
+Before the update the current values are read, so that a value added or deleted concurrently outside of Terraform, which the update would add or delete as well, does not let the update fail.
 
 Values of these attributes are compared case-insensitively, like the LDAP server compares e.g. DNs:
 OpenLDAP returns DNs in member values with lower case attribute types (`uid=jimmit01,ou=users,...`),

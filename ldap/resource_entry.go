@@ -384,6 +384,49 @@ func perValueChanges(oldValues, newValues []string) client.AttributeValueChanges
 	return changes
 }
 
+// filterPerValueChanges restricts the changes of attributes updated per value
+// to the current values on the LDAP server: only values not present yet are
+// added and only values still present are deleted. Values added or deleted
+// concurrently outside of Terraform thus do not let the update fail, which
+// the server would reject otherwise.
+func filterPerValueChanges(cl *client.Client, dn string, changesByAttribute map[string]client.AttributeValueChanges) error {
+	var attributes []string
+	for attributeName, changes := range changesByAttribute {
+		if len(changes.Deleted) > 0 || len(changes.Added) > 0 {
+			attributes = append(attributes, attributeName)
+		}
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	currentEntry, err := cl.ReadEntryByDN(dn, "("+dummyFilter+")", &attributes)
+	if err != nil {
+		return err
+	}
+	for _, attributeName := range attributes {
+		var currentValues []string
+		for currentAttributeName, values := range currentEntry.Entry {
+			if strings.EqualFold(currentAttributeName, attributeName) {
+				currentValues = values
+			}
+		}
+		changes := changesByAttribute[attributeName]
+		var filteredChanges client.AttributeValueChanges
+		for _, value := range changes.Deleted {
+			if containsFold(currentValues, value) {
+				filteredChanges.Deleted = append(filteredChanges.Deleted, value)
+			}
+		}
+		for _, value := range changes.Added {
+			if !containsFold(currentValues, value) {
+				filteredChanges.Added = append(filteredChanges.Added, value)
+			}
+		}
+		changesByAttribute[attributeName] = filteredChanges
+	}
+	return nil
+}
+
 // lowerAttributeValues lower cases the values of the given attributes, to
 // compare them case-insensitively.
 func lowerAttributeValues(ldapEntry *client.LdapEntry, attributes []string) {
@@ -580,6 +623,10 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 				)
 				attributeNameSet.Remove(attributeName)
 			}
+		}
+		err = filterPerValueChanges(cl, dn, perValueChangesByAttribute)
+		if err != nil {
+			return diag.FromErr(err)
 		}
 
 		err = cl.UpdateEntry(&ldapEntryNew, deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet, perValueChangesByAttribute)
