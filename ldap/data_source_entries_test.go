@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/l-with/terraform-provider-ldap/client"
 	"strconv"
@@ -94,28 +93,30 @@ func TestAccDataSourceLdapEntries(t *testing.T) {
 }
 
 func testAccDataSourceEntries() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 locals {
  dn = "ou=users,dc=example,dc=com"
 }
 
 resource "ldap_entry" "users_example_com" {
   dn = "ou=users,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "user_jimmit" {
   depends_on = [ldap_entry.users_example_com]
 
-  dn = "uid=jimmit01,${local.dn}"
+  dn = "%RDN(jimmit01,Jim Mit)%,${local.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["users"]
     givenName   = ["Jim"]
     sn          = ["Mit"]
-    cn          = ["Jim Mit"]
+    %CN(Jim Mit)%
     mail        = ["jim.mit@example.com"]
   })
 }
@@ -123,13 +124,14 @@ resource "ldap_entry" "user_jimmit" {
 resource "ldap_entry" "user_larrymit" {
   depends_on = [ldap_entry.users_example_com]
 
-  dn = "uid=larrymit02,${local.dn}"
+  dn = "%RDN(larrymit02,Larry Mit)%,${local.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["users"]
     givenName   = ["Larry"]
     sn          = ["Mit"]
-    cn          = ["Larry Mit"]
+    %CN(Larry Mit)%
     mail        = ["larry.mit@example.com"]
   })
 }

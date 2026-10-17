@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -20,7 +21,7 @@ func TestAccResourceLdapEntry(t *testing.T) {
 				Config: testAccResourceEntry(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("ldap_entry.users_example_com", "dn", "ou=users,dc=example,dc=com"),
-					resource.TestCheckResourceAttr("ldap_entry.user_jimmit", "dn", "uid=jimmit01,ou=users,dc=example,dc=com"),
+					resource.TestCheckResourceAttr("ldap_entry.user_jimmit", "dn", testAccPersonRDN("jimmit01", "Jim Mit")+",ou=users,dc=example,dc=com"),
 					resource.TestCheckResourceAttrWith(
 						"ldap_entry.user_jimmit",
 						"data_json",
@@ -30,9 +31,10 @@ func TestAccResourceLdapEntry(t *testing.T) {
 							if err != nil {
 								return err
 							}
-							_, uidInEntry := ldapEntry.Entry["uid"]
-							if uidInEntry {
-								return errors.New("uid: expected to be ignored, got '" + ldapEntry.Entry["uid"][0] + "'")
+							rdnAttribute := strings.SplitN(testAccPersonRDN("jimmit01", "Jim Mit"), "=", 2)[0]
+							_, rdnAttributeInEntry := ldapEntry.Entry[rdnAttribute]
+							if rdnAttributeInEntry {
+								return errors.New(rdnAttribute + ": expected to be ignored, got '" + ldapEntry.Entry[rdnAttribute][0] + "'")
 							}
 							return nil
 						},
@@ -61,7 +63,7 @@ func TestAccResourceLdapEntry(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"data.ldap_entries.search",
 						"entries.#",
-						"3",
+						"2",
 					),
 				),
 			},
@@ -89,6 +91,9 @@ func TestAccResourceLdapEntry(t *testing.T) {
 				),
 			},
 			{
+				// memberOf is a computed back link in Active Directory and
+				// member values must reference existing entries.
+				SkipFunc:    testAccSkipOnLdapServer(ldapServerSamba),
 				Config:      testAccResourceEntryRestrictAttributes(),
 				ExpectError: regexp.MustCompile(".*ldap_entry.user_jimmit will be updated in-place.*"),
 				Check: resource.ComposeTestCheckFunc(
@@ -119,22 +124,24 @@ func TestAccResourceLdapEntry(t *testing.T) {
 }
 
 func testAccResourceEntry() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "users_example_com" {
   dn = "ou=users,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "user_jimmit" {
-  dn = "uid=jimmit01,${ldap_entry.users_example_com.dn}"
+  dn = "%RDN(jimmit01,Jim Mit)%,${ldap_entry.users_example_com.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass  = ["inetOrgPerson"]
+    objectClass  = %PERSON_OBJECT_CLASSES%
     ou           = ["users"]
     givenName    = ["Jim"]
     sn           = [ldap_entry.users_example_com.id]
-    cn           = ["Jim Mit"]
+    %CN(Jim Mit)%
 	userPassword = ["userPassword"]
     street       = ["Street"]
   })
@@ -148,32 +155,34 @@ data "ldap_entry" "user_jimmit" {
 
 data "ldap_entries" "search" {
   depends_on = [ldap_entry.user_jimmit]
-  ou         = "dc=example,dc=com"
+  ou         = ldap_entry.users_example_com.dn
   filter     = "objectClass=*"
 }
 `)
 }
 
 func testAccResourceEntryIgnoreAttributes() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "users_example_com" {
   dn = "ou=users,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "user_jimmit" {
-  dn = "uid=jimmit01,${ldap_entry.users_example_com.dn}"
+  dn = "%RDN(jimmit01,Jim Mit)%,${ldap_entry.users_example_com.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   ignore_attributes = [
  	"userPassword"
   ]
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["users"]
     givenName   = ["Jim"]
     sn          = [ldap_entry.users_example_com.id]
-    cn          = ["Jim Mit"]
+    %CN(Jim Mit)%
     street      = ["Street"]
   })
 }
@@ -264,25 +273,27 @@ func TestAccResourceLdapEntryCreateDefaults(t *testing.T) {
 }
 
 func testAccResourceEntryCreateDefaults(street string) string {
-	return fmt.Sprintf(`
+	return fmt.Sprintf(testAccConfig(`
 resource "ldap_entry" "users_example_com" {
   dn = "ou=users,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "user_defaults" {
-  dn = "uid=defaults01,${ldap_entry.users_example_com.dn}"
+  dn = "%RDN(defaults01,Default User)%,${ldap_entry.users_example_com.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json_create_defaults = jsonencode({
     userPassword = ["{SSHA}creation-dummy"]
   })
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["users"]
     givenName   = ["Default"]
     sn          = [ldap_entry.users_example_com.id]
-    cn          = ["Default User"]
+    %CN(Default User)%
     street      = ["%s"]
   })
 }
@@ -291,7 +302,7 @@ data "ldap_entry" "user_defaults" {
   depends_on = [ldap_entry.user_defaults]
   dn         = ldap_entry.user_defaults.dn
 }
-`, street)
+`), street)
 }
 
 func testAccResourceEntryRestrictAttributes() string {
@@ -385,10 +396,10 @@ func TestAccResourceLdapEntryIgnoreAttributesOnUpdate(t *testing.T) {
 			},
 			{
 				// Step 2: Add ignore_attributes for description and street,
-				// remove them from data_json, and change cn. The
+				// remove them from data_json, and change givenName. The
 				// CustomizeDiff must carry the ignored attributes forward so
-				// they are NOT deleted from LDAP. The cn change must still
-				// be applied.
+				// they are NOT deleted from LDAP. The givenName change must
+				// still be applied.
 				Config: testAccEntryAfterIgnoreWithChange(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrWith(
@@ -399,8 +410,8 @@ func TestAccResourceLdapEntryIgnoreAttributesOnUpdate(t *testing.T) {
 							if err := json.Unmarshal([]byte(value), &entry.Entry); err != nil {
 								return err
 							}
-							if entry.Entry["cn"][0] != "Jim Updated" {
-								return fmt.Errorf("cn: expected 'Jim Updated', got '%s'", entry.Entry["cn"][0])
+							if entry.Entry["givenName"][0] != "Jim Updated" {
+								return fmt.Errorf("givenName: expected 'Jim Updated', got '%s'", entry.Entry["givenName"][0])
 							}
 							if _, ok := entry.Entry["description"]; ok {
 								return errors.New("description: expected to be ignored in state after update")
@@ -432,8 +443,8 @@ func TestAccResourceLdapEntryIgnoreAttributesOnUpdate(t *testing.T) {
 							if _, ok := entry.Entry["street"]; !ok {
 								return errors.New("street: expected to still exist in LDAP after ignore")
 							}
-							if entry.Entry["cn"][0] != "Jim Updated" {
-								return fmt.Errorf("cn: expected 'Jim Updated', got '%s'", entry.Entry["cn"][0])
+							if entry.Entry["givenName"][0] != "Jim Updated" {
+								return fmt.Errorf("givenName: expected 'Jim Updated', got '%s'", entry.Entry["givenName"][0])
 							}
 							return nil
 						},
@@ -445,22 +456,24 @@ func TestAccResourceLdapEntryIgnoreAttributesOnUpdate(t *testing.T) {
 }
 
 func testAccEntryBeforeIgnore() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "test_ou" {
   dn = "ou=test_ignore,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "test_user" {
-  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  dn = "%RDN(testignore01,Jim Mit)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["test_ignore"]
     givenName   = ["Jim"]
     sn          = ["Mit"]
-    cn          = ["Jim Mit"]
+    %CN(Jim Mit)%
     description = ["Test user"]
     street      = ["Hauptstr. 1"]
   })
@@ -469,59 +482,63 @@ resource "ldap_entry" "test_user" {
 }
 
 func testAccEntryAfterIgnoreWithChange() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "test_ou" {
   dn = "ou=test_ignore,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "test_user" {
-  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  dn = "%RDN(testignore01,Jim Mit)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   ignore_attributes = [
     "description",
     "street",
   ]
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["test_ignore"]
-    givenName   = ["Jim"]
+    givenName   = ["Jim Updated"]
     sn          = ["Mit"]
-    cn          = ["Jim Updated"]
+    %CN(Jim Mit)%
   })
 }
 `)
 }
 
 func testAccEntryAfterIgnoreWithVerify() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "test_ou" {
   dn = "ou=test_ignore,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "test_user" {
-  dn = "uid=testignore01,${ldap_entry.test_ou.dn}"
+  dn = "%RDN(testignore01,Jim Mit)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   ignore_attributes = [
     "description",
     "street",
   ]
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     ou          = ["test_ignore"]
-    givenName   = ["Jim"]
+    givenName   = ["Jim Updated"]
     sn          = ["Mit"]
-    cn          = ["Jim Updated"]
+    %CN(Jim Mit)%
   })
 }
 
 data "ldap_entry" "test_user_verify" {
   depends_on = [ldap_entry.test_user]
   ou         = ldap_entry.test_ou.dn
-  filter     = "uid=testignore01"
+  filter     = "sn=Mit"
 }
 `)
 }
@@ -543,23 +560,25 @@ func TestAccResourceLdapEntryIgnoredAttributeInDataJson(t *testing.T) {
 }
 
 func testAccEntryIgnoredAttributeInDataJson() string {
-	return fmt.Sprintf(`
+	return testAccConfig(`
 resource "ldap_entry" "test_ou" {
   dn = "ou=test_ignore162,dc=example,dc=com"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   data_json = jsonencode({
-    objectClass = ["organizationalUnit"]
+    objectClass = %OU_OBJECT_CLASSES%
   })
 }
 
 resource "ldap_entry" "test_user" {
-  dn = "uid=testignore162,${ldap_entry.test_ou.dn}"
+  dn = "%RDN(testignore162,Jim Mit)%,${ldap_entry.test_ou.dn}"
+  %IGNORE_OPERATIONAL_ATTRIBUTES%
   ignore_attributes = [
     "description",
   ]
   data_json = jsonencode({
-    objectClass = ["inetOrgPerson"]
+    objectClass = %PERSON_OBJECT_CLASSES%
     sn          = ["Mit"]
-    cn          = ["Jim Mit"]
+    %CN(Jim Mit)%
     description = ["ignored but present in data_json"]
   })
 }
