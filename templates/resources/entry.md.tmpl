@@ -28,6 +28,26 @@ Attributes listed in `ignore_attributes` or matching `ignore_attribute_patterns`
 Values for ignored attributes in `data_json` therefore have no effect: they are not written, do not cause a perpetual diff, and a warning is issued.
 Use `data_json_create_defaults` to set an attribute only on creation and ignore it afterwards.
 
+## Per Value Updates
+
+By default an Update replaces all values of a changed attribute with the values in `data_json`.
+For attributes listed in `per_value_update_attributes` only the values removed from `data_json` are deleted and only the values added to `data_json` are added.
+The result is the same, but values added outside of Terraform after the plan (e.g. members added to a group concurrently) are not deleted by the apply, since the plan did not show their removal.
+The next plan shows their removal, if they are not in `data_json`.
+
+```terraform
+resource "ldap_entry" "group" {
+  dn = "cn=group,ou=groups,dc=example,dc=com"
+  per_value_update_attributes = [
+    "member",
+  ]
+  data_json = jsonencode({
+    objectClass = ["groupOfNames"]
+    member      = ["uid=jimmit01,ou=users,dc=example,dc=com"]
+  })
+}
+```
+
 ## Example Usage
 {{ tffile (printf "examples/resources/%s/resource.tf" .Name)}}
 

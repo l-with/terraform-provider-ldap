@@ -155,6 +155,12 @@ func resourceLDAPEntry() *schema.Resource {
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			attributeNamePerValueUpdateAttributes: {
+				Description: "list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group).",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 			attributeNameDataJsonCreateDefaults: {
 				Description: "JSON-encoded attribute values (same shape as data_json: attribute name -> list of values) injected on Create if the attribute is absent from data_json. Keys are also treated as ignore_attributes on Read and Update, so the attribute is never surfaced to state nor modified after initial creation. Intended for fields owned by an external system (e.g. a userPassword reset by Keycloak after the entry is created).",
 				Type:        schema.TypeString,
@@ -318,6 +324,23 @@ func toStringSlice(raw []interface{}) []string {
 	return out
 }
 
+// perValueChanges returns the values of an attribute updated per value to
+// delete (only in oldValues) and to add (only in newValues).
+func perValueChanges(oldValues, newValues []string) client.AttributeValueChanges {
+	var changes client.AttributeValueChanges
+	for _, oldValue := range oldValues {
+		if !slices.Contains(newValues, oldValue) {
+			changes.Deleted = append(changes.Deleted, oldValue)
+		}
+	}
+	for _, newValue := range newValues {
+		if !slices.Contains(oldValues, newValue) {
+			changes.Added = append(changes.Added, newValue)
+		}
+	}
+	return changes
+}
+
 func isIgnoredAttribute(attr string, ignoreAttrs []string, ignorePatterns []string) bool {
 	if slices.ContainsFunc(ignoreAttrs, func(ignored string) bool {
 		return strings.EqualFold(attr, ignored)
@@ -476,7 +499,27 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 				changedAttributeNameSet.Add(attributeName)
 			}
 		}
-		err = cl.UpdateEntry(&ldapEntryNew, deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet)
+
+		// Attributes updated per value are removed from the attribute name
+		// sets, only their deleted and added values are modified.
+		perValueUpdateAttributes := toStringSlice(d.Get(attributeNamePerValueUpdateAttributes).([]interface{}))
+		perValueChangesByAttribute := map[string]client.AttributeValueChanges{}
+		for _, attributeNameSet := range []*schema.Set{deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet} {
+			for _, attributeName := range attributeNameSet.List() {
+				if !slices.ContainsFunc(perValueUpdateAttributes, func(perValueUpdateAttribute string) bool {
+					return strings.EqualFold(attributeName.(string), perValueUpdateAttribute)
+				}) {
+					continue
+				}
+				perValueChangesByAttribute[attributeName.(string)] = perValueChanges(
+					ldapEntryOld.Entry[attributeName.(string)],
+					ldapEntryNew.Entry[attributeName.(string)],
+				)
+				attributeNameSet.Remove(attributeName)
+			}
+		}
+
+		err = cl.UpdateEntry(&ldapEntryNew, deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet, perValueChangesByAttribute)
 		if err != nil {
 			return diag.FromErr(err)
 		}

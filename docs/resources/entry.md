@@ -28,6 +28,26 @@ Attributes listed in `ignore_attributes` or matching `ignore_attribute_patterns`
 Values for ignored attributes in `data_json` therefore have no effect: they are not written, do not cause a perpetual diff, and a warning is issued.
 Use `data_json_create_defaults` to set an attribute only on creation and ignore it afterwards.
 
+## Per Value Updates
+
+By default an Update replaces all values of a changed attribute with the values in `data_json`.
+For attributes listed in `per_value_update_attributes` only the values removed from `data_json` are deleted and only the values added to `data_json` are added.
+The result is the same, but values added outside of Terraform after the plan (e.g. members added to a group concurrently) are not deleted by the apply, since the plan did not show their removal.
+The next plan shows their removal, if they are not in `data_json`.
+
+```terraform
+resource "ldap_entry" "group" {
+  dn = "cn=group,ou=groups,dc=example,dc=com"
+  per_value_update_attributes = [
+    "member",
+  ]
+  data_json = jsonencode({
+    objectClass = ["groupOfNames"]
+    member      = ["uid=jimmit01,ou=users,dc=example,dc=com"]
+  })
+}
+```
+
 ## Example Usage
 ```terraform
 resource "ldap_entry" "users_example_com" {
@@ -65,6 +85,7 @@ resource "ldap_entry" "user_example" {
 - `data_json_create_defaults` (String) JSON-encoded attribute values (same shape as data_json: attribute name -> list of values) injected on Create if the attribute is absent from data_json. Keys are also treated as ignore_attributes on Read and Update, so the attribute is never surfaced to state nor modified after initial creation. Intended for fields owned by an external system (e.g. a userPassword reset by Keycloak after the entry is created).
 - `ignore_attribute_patterns` (List of String) list of attribute patterns to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.
 - `ignore_attributes` (List of String) list of attributes to ignore. Ignored attributes are neither read from nor written to LDAP (not even on Create); values for them in data_json have no effect and cause a warning. Use data_json_create_defaults to set an attribute only on creation.
+- `per_value_update_attributes` (List of String) list of attributes updated per value: on Update only the values removed from data_json are deleted and only the values added to data_json are added, instead of replacing all values of the attribute. Values added outside of Terraform after the plan are thus not deleted (e.g. members of a group).
 - `restrict_attributes` (List of String) list of attributes to which operating is restricted. Defaults to '*', which means 'all user attributes'. It can also contain operational attributes.
 
 ### Read-Only

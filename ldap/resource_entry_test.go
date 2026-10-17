@@ -744,6 +744,9 @@ resource "ldap_entry" "group" {
   ]
   dn = "cn=group,${ldap_entry.test_ou.dn}"
   %IGNORE_OPERATIONAL_ATTRIBUTES%
+  per_value_update_attributes = [
+    "member",
+  ]
   data_json = jsonencode({
     objectClass = %GROUP_OBJECT_CLASSES%
     member      = [%s]
