@@ -4,6 +4,8 @@ The acceptance tests run against the LDAP server given by the `LDAP_*` environme
 `LDAP_SERVER` selects the server type (`openldap` or `samba`, defaults to `openldap`),
 so that the test configurations can be adapted to the server and server specific tests or steps can be skipped.
 
+The GitHub workflow [go.yml](../.github/workflows/go.yml) runs the tests against both servers with the same settings as below.
+
 ## OpenLDAP
 
 ```bash

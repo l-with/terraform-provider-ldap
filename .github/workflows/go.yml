@@ -2,7 +2,7 @@ name: Go
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
   pull_request:
 
 jobs:
@@ -20,7 +20,58 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-#      - name: Test
-#        env:
-#          # These secrets will need to be configured for the repository:
-#        run: go test -v ./...
+  test:
+    name: test (${{ matrix.server }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: openldap
+            image: osixia/openldap:latest
+            port: 389
+            env_file: ldap.env
+            options: >-
+              --health-cmd "ldapsearch -x -H ldap://localhost -D cn=admin,dc=example,dc=com -w admin -b dc=example,dc=com -s base"
+              --health-interval 5s --health-timeout 5s --health-retries 30
+          - server: samba
+            image: smblds/smblds:latest
+            port: 3389
+            env_file: samba.env
+            # the image defines its own health check
+            options: >-
+              --health-interval 5s --health-timeout 5s --health-retries 30
+    services:
+      ldap:
+        image: ${{ matrix.image }}
+        # same settings as test/docker-compose.yml and test/docker-compose-samba.yml,
+        # each image ignores the variables of the other one
+        env:
+          LDAP_ORGANISATION: "Example Inc."
+          LDAP_DOMAIN: "example.com"
+          LDAP_ADMIN_PASSWORD: "admin"
+          LDAP_CONFIG_PASSWORD: "config"
+          REALM: "EXAMPLE.COM"
+          DOMAIN: "EXAMPLE"
+          ADMINPASS: "Passw0rd"
+          INSECURE_LDAP: "true"
+        ports:
+          - ${{ matrix.port }}:389
+        options: ${{ matrix.options }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version: 1.26
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+
+      - name: Test
+        run: |
+          source test/${{ matrix.env_file }}
+          go test -v -count=1 -timeout 30m ./...
