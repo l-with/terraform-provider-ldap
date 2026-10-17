@@ -103,6 +103,9 @@ func resourceLDAPEntry() *schema.Resource {
 							}
 						}
 					}
+					perValueUpdateAttributes := toStringSlice(d.Get(attributeNamePerValueUpdateAttributes).([]interface{}))
+					lowerAttributeValues(&oldLdapEntry, perValueUpdateAttributes)
+					lowerAttributeValues(&newLdapEntry, perValueUpdateAttributes)
 					client.SortLdapEntryValues(&oldLdapEntry)
 					client.SortLdapEntryValues(&newLdapEntry)
 					oldJsonData, _ := json.Marshal(oldLdapEntry.Entry)
@@ -364,20 +367,43 @@ func toStringSlice(raw []interface{}) []string {
 }
 
 // perValueChanges returns the values of an attribute updated per value to
-// delete (only in oldValues) and to add (only in newValues).
+// delete (only in oldValues) and to add (only in newValues). Values are
+// compared case-insensitively, like the LDAP server compares e.g. DNs.
 func perValueChanges(oldValues, newValues []string) client.AttributeValueChanges {
 	var changes client.AttributeValueChanges
 	for _, oldValue := range oldValues {
-		if !slices.Contains(newValues, oldValue) {
+		if !containsFold(newValues, oldValue) {
 			changes.Deleted = append(changes.Deleted, oldValue)
 		}
 	}
 	for _, newValue := range newValues {
-		if !slices.Contains(oldValues, newValue) {
+		if !containsFold(oldValues, newValue) {
 			changes.Added = append(changes.Added, newValue)
 		}
 	}
 	return changes
+}
+
+// lowerAttributeValues lower cases the values of the given attributes, to
+// compare them case-insensitively.
+func lowerAttributeValues(ldapEntry *client.LdapEntry, attributes []string) {
+	for attributeName, values := range ldapEntry.Entry {
+		if !containsFold(attributes, attributeName) {
+			continue
+		}
+		lowerValues := make([]string, len(values))
+		for i, value := range values {
+			lowerValues[i] = strings.ToLower(value)
+		}
+		ldapEntry.Entry[attributeName] = lowerValues
+	}
+}
+
+// containsFold reports whether s is in list, compared case-insensitively.
+func containsFold(list []string, s string) bool {
+	return slices.ContainsFunc(list, func(element string) bool {
+		return strings.EqualFold(element, s)
+	})
 }
 
 func isIgnoredAttribute(attr string, ignoreAttrs []string, ignorePatterns []string) bool {
@@ -545,9 +571,7 @@ func resourceLDAPEntryUpdate(ctx context.Context, d *schema.ResourceData, m inte
 		perValueChangesByAttribute := map[string]client.AttributeValueChanges{}
 		for _, attributeNameSet := range []*schema.Set{deletedAttributeNameSet, addedAttributeNameSet, changedAttributeNameSet} {
 			for _, attributeName := range attributeNameSet.List() {
-				if !slices.ContainsFunc(perValueUpdateAttributes, func(perValueUpdateAttribute string) bool {
-					return strings.EqualFold(attributeName.(string), perValueUpdateAttribute)
-				}) {
+				if !containsFold(perValueUpdateAttributes, attributeName.(string)) {
 					continue
 				}
 				perValueChangesByAttribute[attributeName.(string)] = perValueChanges(
