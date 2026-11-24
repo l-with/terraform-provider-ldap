@@ -105,6 +105,27 @@ jobs:
             throw "ldifde failed with exit code $LASTEXITCODE"
           }
 
+      - name: Allow simple binds without TLS
+        run: |
+          # The provider binds with DN and password (simple bind) over plain
+          # LDAP, which newer Windows Server versions reject by default
+          # ("Strong authentication is required").
+          $rootDse = [ADSI]"LDAP://localhost:389/RootDSE"
+          $configurationNamingContext = $rootDse.configurationNamingContext
+          $directoryService = [ADSI]"LDAP://localhost:389/CN=Directory Service,CN=Windows NT,CN=Services,$configurationNamingContext"
+          $otherSettings = $directoryService.Properties['msDS-Other-Settings']
+          Write-Output "msDS-Other-Settings before:"
+          $otherSettings | ForEach-Object { Write-Output "  $_" }
+          @($otherSettings) | Where-Object { $_ -like 'RequireSecureSimpleBind=*' } | ForEach-Object { [void]$otherSettings.Remove($_) }
+          [void]$otherSettings.Add('RequireSecureSimpleBind=0')
+          $directoryService.CommitChanges()
+
+          $parameters = "HKLM:\SYSTEM\CurrentControlSet\Services\ADAM_$env:ADLDS_INSTANCE\Parameters"
+          Write-Output "LDAPServerIntegrity before: $((Get-ItemProperty -Path $parameters -Name LDAPServerIntegrity -ErrorAction SilentlyContinue).LDAPServerIntegrity)"
+          Set-ItemProperty -Path $parameters -Name LDAPServerIntegrity -Value 1 -Type DWord
+          Restart-Service "ADAM_$env:ADLDS_INSTANCE"
+          Get-Service "ADAM_$env:ADLDS_INSTANCE" | Format-List
+
       - name: Check simple bind and search
         run: |
           Add-Type -AssemblyName System.DirectoryServices.Protocols
