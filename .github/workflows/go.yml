@@ -76,3 +76,149 @@ jobs:
         run: |
           source test/${{ matrix.env_file }}
           go test -v -count=1 -timeout 30m ./...
+
+  # Active Directory Lightweight Directory Services (AD LDS) as a real
+  # Microsoft LDAP server. Windows runners have no service containers, so AD
+  # LDS is installed on the runner itself (s. test/README.md).
+  test-adlds:
+    name: test (adlds)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      ADLDS_INSTANCE: example
+      ADLDS_PARTITION: DC=example,DC=com
+      ADLDS_ADMIN_DN: CN=admin,DC=example,DC=com
+      ADLDS_ADMIN_PASSWORD: Passw0rd!2026
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.1.0
+        with:
+          go-version: 1.26
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+
+      - name: Show Windows version
+        run: |
+          Get-ComputerInfo -Property OsName, OsVersion, WindowsVersion | Format-List
+
+      - name: Install AD LDS feature
+        run: |
+          # the management tools contain the command line tools, e.g. ldifde
+          $result = Install-WindowsFeature ADLDS -IncludeManagementTools
+          $result | Format-List
+          if (-not $result.Success) { throw "installing ADLDS failed" }
+          if ($result.RestartNeeded -eq 'Yes') { throw "installing ADLDS needs a restart" }
+
+      - name: Create AD LDS instance
+        run: |
+          $answerFile = Join-Path $env:RUNNER_TEMP 'adlds-answer.txt'
+          @"
+          [ADAMInstall]
+          InstallType=Unique
+          InstanceName=$env:ADLDS_INSTANCE
+          LocalLDAPPortToListenOn=389
+          LocalSSLPortToListenOn=636
+          NewApplicationPartitionToCreate=$env:ADLDS_PARTITION
+          DataFilesPath=C:\ADLDS\$env:ADLDS_INSTANCE\data
+          LogFilesPath=C:\ADLDS\$env:ADLDS_INSTANCE\logs
+          ImportLDIFFiles="MS-InetOrgPerson.LDF" "MS-User.LDF" "MS-UserProxy.LDF"
+          "@ | Set-Content -Path $answerFile -Encoding ascii
+          $process = Start-Process -FilePath "$env:windir\ADAM\adaminstall.exe" -ArgumentList "/answer:$answerFile" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
+            Get-Content "$env:windir\Debug\adamsetup.log" -Tail 100 -ErrorAction SilentlyContinue
+            throw "adaminstall failed with exit code $($process.ExitCode)"
+          }
+
+      - name: Create AD LDS admin user
+        run: |
+          # bind with the Windows account of the runner, which installed the
+          # instance and is therefore its administrator
+          $rootDse = [ADSI]"LDAP://localhost:389/RootDSE"
+          $configurationNamingContext = $rootDse.configurationNamingContext
+
+          # allow password operations over non-SSL connections (13th character
+          # of dSHeuristics, the 10th character has to be 1 as a check digit)
+          $ldif = Join-Path $env:RUNNER_TEMP 'adlds-admin.ldf'
+          @"
+          dn: CN=Directory Service,CN=Windows NT,CN=Services,$configurationNamingContext
+          changetype: modify
+          replace: dSHeuristics
+          dSHeuristics: 0000000001001
+          -
+
+          dn: $env:ADLDS_ADMIN_DN
+          changetype: add
+          objectClass: user
+          userPrincipalName: admin@example.com
+
+          dn: $env:ADLDS_ADMIN_DN
+          changetype: modify
+          replace: userPassword
+          userPassword: $env:ADLDS_ADMIN_PASSWORD
+          -
+          replace: msDS-UserAccountDisabled
+          msDS-UserAccountDisabled: FALSE
+          -
+
+          dn: CN=Administrators,CN=Roles,$env:ADLDS_PARTITION
+          changetype: modify
+          add: member
+          member: $env:ADLDS_ADMIN_DN
+          -
+
+          "@ | Set-Content -Path $ldif -Encoding ascii
+          $ldifde = (Get-Command ldifde.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ldifde) {
+            $ldifde = Get-ChildItem -Path "$env:windir\System32", "$env:windir\ADAM" -Filter ldifde.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $ldifde) { throw "ldifde.exe not found" }
+          & $ldifde -i -f $ldif -s localhost -t 389 -j $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content (Join-Path $env:RUNNER_TEMP 'ldif.err') -ErrorAction SilentlyContinue
+            throw "ldifde failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Allow simple binds without TLS
+        run: |
+          # The provider binds with DN and password (simple bind) over plain
+          # LDAP, which newer Windows Server versions reject by default
+          # ("Strong authentication is required"). 0: do not enforce signing.
+          $parameters = "HKLM:\SYSTEM\CurrentControlSet\Services\ADAM_$env:ADLDS_INSTANCE\Parameters"
+          Set-ItemProperty -Path $parameters -Name LDAPServerEnforceIntegrity -Value 0 -Type DWord
+          Restart-Service "ADAM_$env:ADLDS_INSTANCE"
+
+      - name: Check simple bind
+        run: |
+          Add-Type -AssemblyName System.DirectoryServices.Protocols
+          $identifier = New-Object System.DirectoryServices.Protocols.LdapDirectoryIdentifier('localhost', 389)
+          $credential = New-Object System.Net.NetworkCredential($env:ADLDS_ADMIN_DN, $env:ADLDS_ADMIN_PASSWORD)
+          $connection = New-Object System.DirectoryServices.Protocols.LdapConnection($identifier, $credential, [System.DirectoryServices.Protocols.AuthType]::Basic)
+          $connection.SessionOptions.ProtocolVersion = 3
+          try {
+            $connection.Bind()
+          } catch {
+            Write-Output "simple bind failed: $_"
+            Write-Output "recent events of the AD LDS instance:"
+            Get-WinEvent -LogName "ADAM ($env:ADLDS_INSTANCE)" -MaxEvents 30 -ErrorAction SilentlyContinue |
+              Where-Object { $_.LevelDisplayName -ne 'Information' } |
+              Format-List TimeCreated, Id, LevelDisplayName, Message
+            throw
+          }
+          Write-Output "simple bind as $env:ADLDS_ADMIN_DN succeeded"
+
+      - name: Test
+        env:
+          LDAP_SERVER: adlds
+          LDAP_HOST: localhost
+          LDAP_PORT: "389"
+          LDAP_BIND_USER: ${{ env.ADLDS_ADMIN_DN }}
+          LDAP_BIND_PASSWORD: ${{ env.ADLDS_ADMIN_PASSWORD }}
+        run: |
+          go test -v -count=1 -timeout 30m ./...
