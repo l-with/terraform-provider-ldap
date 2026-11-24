@@ -26,7 +26,8 @@ jobs:
 
       - name: Install AD LDS feature
         run: |
-          $result = Install-WindowsFeature ADLDS
+          # the management tools contain the command line tools, e.g. ldifde
+          $result = Install-WindowsFeature ADLDS -IncludeManagementTools
           $result | Format-List
           if (-not $result.Success) { throw "installing ADLDS failed" }
           if ($result.RestartNeeded -eq 'Yes') { throw "installing ADLDS needs a restart" }
@@ -92,7 +93,13 @@ jobs:
           -
 
           "@ | Set-Content -Path $ldif -Encoding ascii
-          & "$env:windir\ADAM\ldifde.exe" -i -f $ldif -s localhost -t 389 -j $env:RUNNER_TEMP
+          $ldifde = (Get-Command ldifde.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ldifde) {
+            $ldifde = Get-ChildItem -Path "$env:windir\System32", "$env:windir\ADAM" -Filter ldifde.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $ldifde) { throw "ldifde.exe not found" }
+          Write-Output "using $ldifde"
+          & $ldifde -i -f $ldif -s localhost -t 389 -j $env:RUNNER_TEMP
           if ($LASTEXITCODE -ne 0) {
             Get-Content (Join-Path $env:RUNNER_TEMP 'ldif.err') -ErrorAction SilentlyContinue
             throw "ldifde failed with exit code $LASTEXITCODE"
