@@ -98,7 +98,7 @@ func TestAccResourceLdapEntry(t *testing.T) {
 			{
 				// memberOf is a computed back link in Active Directory and
 				// member values must reference existing entries.
-				SkipFunc:    testAccSkipOnLdapServer(ldapServerSamba),
+				SkipFunc:    testAccSkipOnLdapServer(ldapServerSamba, ldapServerADLDS),
 				Config:      testAccResourceEntryRestrictAttributes(),
 				ExpectError: regexp.MustCompile(".*ldap_entry.user_jimmit will be updated in-place.*"),
 				Check: resource.ComposeTestCheckFunc(
@@ -737,7 +737,7 @@ func TestAccResourceLdapEntryPerValueUpdateCaseInsensitive(t *testing.T) {
 // values (s. testAccPerValueMemberDn).
 func testAccPerValueMemberDnOtherCase(uid, cn string) string {
 	rdn := strings.SplitN(testAccPersonRDN(uid, cn), "=", 2)
-	if testLdapServer() == ldapServerSamba {
+	if testAccIsActiveDirectory() {
 		return rdn[0] + "=" + rdn[1] + ",ou=test_per_value,dc=example,dc=com"
 	}
 	return strings.ToUpper(rdn[0]) + "=" + rdn[1] + ",OU=test_per_value,DC=example,DC=com"
@@ -748,7 +748,7 @@ func testAccPerValueMemberDnOtherCase(uid, cn string) string {
 // AD with upper case attribute types.
 func testAccPerValueMemberDn(uid, cn string) string {
 	rdn := strings.SplitN(testAccPersonRDN(uid, cn), "=", 2)
-	if testLdapServer() == ldapServerSamba {
+	if testAccIsActiveDirectory() {
 		return strings.ToUpper(rdn[0]) + "=" + rdn[1] + ",OU=test_per_value,DC=example,DC=com"
 	}
 	return rdn[0] + "=" + rdn[1] + ",ou=test_per_value,dc=example,dc=com"

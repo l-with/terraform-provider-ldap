@@ -15,7 +15,17 @@ import (
 const (
 	ldapServerOpenLDAP = "openldap"
 	ldapServerSamba    = "samba"
+	// Active Directory Lightweight Directory Services on a Windows runner
+	// (s. .github/workflows/ad-lds.yml)
+	ldapServerADLDS = "adlds"
 )
+
+// testAccIsActiveDirectory reports whether the acceptance tests run against an
+// Active Directory compatible server (Samba AD or AD LDS).
+func testAccIsActiveDirectory() bool {
+	server := testLdapServer()
+	return server == ldapServerSamba || server == ldapServerADLDS
+}
 
 // testLdapServer returns the type of the LDAP server the acceptance tests run
 // against. It defaults to OpenLDAP if LDAP_SERVER is not set.
@@ -53,10 +63,11 @@ func testAccSkipOnLdapServer(servers ...string) func() (bool, error) {
 	}
 }
 
-// sambaOperationalAttributes are attributes Samba AD maintains itself. They
-// are returned for "*" (all user attributes) and have to be ignored by
-// ldap_entry resources to avoid a perpetual diff.
-var sambaOperationalAttributes = []string{
+// activeDirectoryOperationalAttributes are attributes Active Directory
+// compatible servers maintain themselves. They are returned for "*" (all user
+// attributes) and have to be ignored by ldap_entry resources to avoid a
+// perpetual diff.
+var activeDirectoryOperationalAttributes = []string{
 	"accountExpires",
 	"badPasswordTime",
 	"badPwdCount",
@@ -94,14 +105,14 @@ var testAccConfigCNRegexp = regexp.MustCompile(`%CN\(([^)]+)\)%`)
 //   - %OU_OBJECT_CLASSES%: object classes of an organizational unit
 //   - %PERSON_OBJECT_CLASSES%: object classes of an inetOrgPerson
 //   - %GROUP_OBJECT_CLASSES%: object classes of a group with member values,
-//     groupOfNames for OpenLDAP and group for Samba, where modifications
-//     of member fail for groupOfNames
+//     groupOfNames for OpenLDAP and group for Active Directory, where
+//     modifications of member fail for groupOfNames (Samba AD)
 //   - %IGNORE_OPERATIONAL_ATTRIBUTES%: ignore_attribute_patterns for the
 //     attributes the server maintains itself (empty for OpenLDAP)
 //   - %RDN(uid,cn)%: RDN of a person, "uid=<uid>" for OpenLDAP and
-//     "cn=<cn>" for Samba, where inetOrgPerson must be named by cn
-//   - %CN(cn)%: the cn attribute of a person for data_json, empty for Samba
-//     since the cn is given by the RDN there
+//     "cn=<cn>" for Active Directory, where inetOrgPerson must be named by cn
+//   - %CN(cn)%: the cn attribute of a person for data_json, empty for Active
+//     Directory since the cn is given by the RDN there
 func testAccConfig(config string) string {
 	ouObjectClasses := `["organizationalUnit"]`
 	personObjectClasses := `["inetOrgPerson"]`
@@ -109,11 +120,11 @@ func testAccConfig(config string) string {
 	ignoreOperationalAttributes := ""
 	rdn := "uid=$1"
 	cn := `cn = ["$1"]`
-	if testLdapServer() == ldapServerSamba {
+	if testAccIsActiveDirectory() {
 		ouObjectClasses = `["top", "organizationalUnit"]`
 		personObjectClasses = `["top", "person", "organizationalPerson", "user", "inetOrgPerson"]`
 		groupObjectClasses = `["top", "group"]`
-		ignoreOperationalAttributes = fmt.Sprintf(`ignore_attribute_patterns = ["^(%s)$"]`, strings.Join(sambaOperationalAttributes, "|"))
+		ignoreOperationalAttributes = fmt.Sprintf(`ignore_attribute_patterns = ["^(%s)$"]`, strings.Join(activeDirectoryOperationalAttributes, "|"))
 		rdn = "cn=$2"
 		cn = ""
 	}
@@ -130,14 +141,14 @@ func testAccConfig(config string) string {
 // testAccPersonRDN returns the RDN of a person like %RDN(uid,cn)% in
 // testAccConfig.
 func testAccPersonRDN(uid, cn string) string {
-	if testLdapServer() == ldapServerSamba {
+	if testAccIsActiveDirectory() {
 		return "cn=" + cn
 	}
 	return "uid=" + uid
 }
 
 // testAccCheckResourceAttrEqualFold checks an attribute case-insensitively,
-// e.g. a DN, which Samba returns with upper case attribute types.
+// e.g. a DN, which Active Directory returns with upper case attribute types.
 func testAccCheckResourceAttrEqualFold(name, key, expected string) resource.TestCheckFunc {
 	return resource.TestCheckResourceAttrWith(name, key, func(value string) error {
 		if !strings.EqualFold(value, expected) {

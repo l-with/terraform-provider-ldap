@@ -20,6 +20,18 @@ jobs:
       ADLDS_ADMIN_DN: CN=admin,DC=example,DC=com
       ADLDS_ADMIN_PASSWORD: Passw0rd!2026
     steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.1.0
+        with:
+          go-version: 1.26
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+
       - name: Show Windows version
         run: |
           Get-ComputerInfo -Property OsName, OsVersion, WindowsVersion | Format-List
@@ -158,3 +170,13 @@ jobs:
           $request = New-Object System.DirectoryServices.Protocols.SearchRequest($env:ADLDS_PARTITION, '(objectClass=*)', 'OneLevel', @('distinguishedName'))
           $response = $connection.SendRequest($request)
           foreach ($entry in $response.Entries) { Write-Output "entry: $($entry.DistinguishedName)" }
+
+      - name: Test
+        env:
+          LDAP_SERVER: adlds
+          LDAP_HOST: localhost
+          LDAP_PORT: "389"
+          LDAP_BIND_USER: ${{ env.ADLDS_ADMIN_DN }}
+          LDAP_BIND_PASSWORD: ${{ env.ADLDS_ADMIN_PASSWORD }}
+        run: |
+          go test -v -count=1 -timeout 30m ./...
