@@ -18,6 +18,9 @@ import (
 )
 
 func TestAccResourceLdapEntry(t *testing.T) {
+	// userPassword is a password attribute in AD LDS: it is subject to the
+	// password policy and never returned.
+	testAccSkipUnlessLdapServer(t, ldapServerOpenLDAP, ldapServerSamba)
 	resource.UnitTest(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: providerFactories,
@@ -195,6 +198,9 @@ resource "ldap_entry" "user_jimmit" {
 }
 
 func TestAccResourceLdapEntryCreateDefaults(t *testing.T) {
+	// userPassword is a password attribute in AD LDS: it is subject to the
+	// password policy and never returned.
+	testAccSkipUnlessLdapServer(t, ldapServerOpenLDAP, ldapServerSamba)
 	resource.UnitTest(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: providerFactories,
