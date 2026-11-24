@@ -6,7 +6,8 @@ services:
       LDAP_DOMAIN: "example.com"
       LDAP_ADMIN_PASSWORD: "admin"
       LDAP_CONFIG_PASSWORD: "config"
-    image: osixia/openldap:latest
+    # 1.5.0 (OpenLDAP 2.4), latest is 2.6 with a different configuration since 2026-11-23
+    image: osixia/openldap:1.5.0
     ports:
       - "389:389"
       - "636:636"
