@@ -1,0 +1,119 @@
+name: AD LDS
+
+# Trial: set up Active Directory Lightweight Directory Services (AD LDS) on a
+# Windows runner as a real Microsoft LDAP server for the acceptance tests.
+on:
+  push:
+    branches: [ "ad-lds" ]
+  workflow_dispatch:
+
+jobs:
+
+  ad-lds:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      ADLDS_INSTANCE: example
+      ADLDS_PARTITION: DC=example,DC=com
+      ADLDS_ADMIN_DN: CN=admin,DC=example,DC=com
+      ADLDS_ADMIN_PASSWORD: Passw0rd!2026
+    steps:
+      - name: Show Windows version
+        run: |
+          Get-ComputerInfo -Property OsName, OsVersion, WindowsVersion | Format-List
+
+      - name: Install AD LDS feature
+        run: |
+          $result = Install-WindowsFeature ADLDS
+          $result | Format-List
+          if (-not $result.Success) { throw "installing ADLDS failed" }
+          if ($result.RestartNeeded -eq 'Yes') { throw "installing ADLDS needs a restart" }
+
+      - name: Create AD LDS instance
+        run: |
+          $answerFile = Join-Path $env:RUNNER_TEMP 'adlds-answer.txt'
+          @"
+          [ADAMInstall]
+          InstallType=Unique
+          InstanceName=$env:ADLDS_INSTANCE
+          LocalLDAPPortToListenOn=389
+          LocalSSLPortToListenOn=636
+          NewApplicationPartitionToCreate=$env:ADLDS_PARTITION
+          DataFilesPath=C:\ADLDS\$env:ADLDS_INSTANCE\data
+          LogFilesPath=C:\ADLDS\$env:ADLDS_INSTANCE\logs
+          ImportLDIFFiles="MS-InetOrgPerson.LDF" "MS-User.LDF" "MS-UserProxy.LDF"
+          "@ | Set-Content -Path $answerFile -Encoding ascii
+          Get-Content $answerFile
+          $process = Start-Process -FilePath "$env:windir\ADAM\adaminstall.exe" -ArgumentList "/answer:$answerFile" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
+            Get-Content "$env:windir\Debug\adamsetup.log" -Tail 100 -ErrorAction SilentlyContinue
+            throw "adaminstall failed with exit code $($process.ExitCode)"
+          }
+          Get-Service "ADAM_$env:ADLDS_INSTANCE" | Format-List
+
+      - name: Create AD LDS admin user
+        run: |
+          # bind with the Windows account of the runner, which installed the
+          # instance and is therefore its administrator
+          $rootDse = [ADSI]"LDAP://localhost:389/RootDSE"
+          $configurationNamingContext = $rootDse.configurationNamingContext
+          Write-Output "configurationNamingContext: $configurationNamingContext"
+
+          # allow password operations over non-SSL connections (13th character
+          # of dSHeuristics, the 10th character has to be 1 as a check digit)
+          $ldif = Join-Path $env:RUNNER_TEMP 'adlds-admin.ldf'
+          @"
+          dn: CN=Directory Service,CN=Windows NT,CN=Services,$configurationNamingContext
+          changetype: modify
+          replace: dSHeuristics
+          dSHeuristics: 0000000001001
+          -
+
+          dn: $env:ADLDS_ADMIN_DN
+          changetype: add
+          objectClass: user
+          userPrincipalName: admin@example.com
+
+          dn: $env:ADLDS_ADMIN_DN
+          changetype: modify
+          replace: userPassword
+          userPassword: $env:ADLDS_ADMIN_PASSWORD
+          -
+          replace: msDS-UserAccountDisabled
+          msDS-UserAccountDisabled: FALSE
+          -
+
+          dn: CN=Administrators,CN=Roles,$env:ADLDS_PARTITION
+          changetype: modify
+          add: member
+          member: $env:ADLDS_ADMIN_DN
+          -
+
+          "@ | Set-Content -Path $ldif -Encoding ascii
+          & "$env:windir\ADAM\ldifde.exe" -i -f $ldif -s localhost -t 389 -j $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content (Join-Path $env:RUNNER_TEMP 'ldif.err') -ErrorAction SilentlyContinue
+            throw "ldifde failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Check simple bind and search
+        run: |
+          Add-Type -AssemblyName System.DirectoryServices.Protocols
+          $identifier = New-Object System.DirectoryServices.Protocols.LdapDirectoryIdentifier('localhost', 389)
+          $credential = New-Object System.Net.NetworkCredential($env:ADLDS_ADMIN_DN, $env:ADLDS_ADMIN_PASSWORD)
+          $connection = New-Object System.DirectoryServices.Protocols.LdapConnection($identifier, $credential, [System.DirectoryServices.Protocols.AuthType]::Basic)
+          $connection.SessionOptions.ProtocolVersion = 3
+          $connection.Bind()
+          Write-Output "simple bind as $env:ADLDS_ADMIN_DN succeeded"
+
+          $request = New-Object System.DirectoryServices.Protocols.SearchRequest('', '(objectClass=*)', 'Base', @('vendorName', 'supportedControl', 'namingContexts'))
+          $response = $connection.SendRequest($request)
+          foreach ($attribute in $response.Entries[0].Attributes.Values) {
+            foreach ($value in $attribute.GetValues([string])) { Write-Output "$($attribute.Name): $value" }
+          }
+
+          $request = New-Object System.DirectoryServices.Protocols.SearchRequest($env:ADLDS_PARTITION, '(objectClass=*)', 'OneLevel', @('distinguishedName'))
+          $response = $connection.SendRequest($request)
+          foreach ($entry in $response.Entries) { Write-Output "entry: $($entry.DistinguishedName)" }
