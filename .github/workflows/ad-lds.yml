@@ -121,8 +121,12 @@ jobs:
           $directoryService.CommitChanges()
 
           $parameters = "HKLM:\SYSTEM\CurrentControlSet\Services\ADAM_$env:ADLDS_INSTANCE\Parameters"
-          Write-Output "LDAPServerIntegrity before: $((Get-ItemProperty -Path $parameters -Name LDAPServerIntegrity -ErrorAction SilentlyContinue).LDAPServerIntegrity)"
+          Write-Output "registry $parameters before:"
+          Get-ItemProperty -Path $parameters | Format-List
+          # 1: signing not required
           Set-ItemProperty -Path $parameters -Name LDAPServerIntegrity -Value 1 -Type DWord
+          # 0: do not enforce signing (newer Windows Server versions)
+          Set-ItemProperty -Path $parameters -Name LDAPServerEnforceIntegrity -Value 0 -Type DWord
           Restart-Service "ADAM_$env:ADLDS_INSTANCE"
           Get-Service "ADAM_$env:ADLDS_INSTANCE" | Format-List
 
@@ -133,7 +137,16 @@ jobs:
           $credential = New-Object System.Net.NetworkCredential($env:ADLDS_ADMIN_DN, $env:ADLDS_ADMIN_PASSWORD)
           $connection = New-Object System.DirectoryServices.Protocols.LdapConnection($identifier, $credential, [System.DirectoryServices.Protocols.AuthType]::Basic)
           $connection.SessionOptions.ProtocolVersion = 3
-          $connection.Bind()
+          try {
+            $connection.Bind()
+          } catch {
+            Write-Output "simple bind failed: $_"
+            Write-Output "recent events of the AD LDS instance:"
+            Get-WinEvent -LogName "ADAM ($env:ADLDS_INSTANCE)" -MaxEvents 30 -ErrorAction SilentlyContinue |
+              Where-Object { $_.LevelDisplayName -ne 'Information' } |
+              Format-List TimeCreated, Id, LevelDisplayName, Message
+            throw
+          }
           Write-Output "simple bind as $env:ADLDS_ADMIN_DN succeeded"
 
           $request = New-Object System.DirectoryServices.Protocols.SearchRequest('', '(objectClass=*)', 'Base', @('vendorName', 'supportedControl', 'namingContexts'))
